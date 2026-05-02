@@ -490,6 +490,7 @@ export default function AddJobPage() {
   // Local selection states
   const [selectedService, setSelectedService] = useState("");
   const [selectedServiceVehicleType, setSelectedServiceVehicleType] = useState("");
+  const [selectedServiceWarranty, setSelectedServiceWarranty] = useState("");
   const [selectedTechnician, setSelectedTechnician] = useState("");
   const [selectedPPF, setSelectedPPF] = useState("");
   const currentPPF = ppfMasters.find(p => p.id === selectedPPF);
@@ -662,20 +663,34 @@ export default function AddJobPage() {
       return;
     }
 
-    const vehiclePricing = s?.pricingByVehicleType.find(p => p.vehicleType === vehicleType);
+    const vehiclePricing = (s?.pricingByVehicleType as any[])?.find(p => p.vehicleType === vehicleType);
+    const hasWarrantyOptions = vehiclePricing?.warrantyOptions && vehiclePricing.warrantyOptions.length > 0;
+
+    let price = vehiclePricing?.price || 0;
+    let serviceName = `${s?.name} (${vehicleType})`;
+    let warranty: string | undefined;
+
+    if (hasWarrantyOptions && selectedServiceWarranty) {
+      const warrantyOpt = vehiclePricing.warrantyOptions.find((o: any) => o.warrantyName === selectedServiceWarranty);
+      price = warrantyOpt?.price || 0;
+      serviceName = `${s?.name} (${vehicleType} - ${selectedServiceWarranty})`;
+      warranty = selectedServiceWarranty;
+    }
     
     if (s) {
       appendService({ 
         serviceId: s.id!, 
         id: s.id!,
-        name: `${s.name} (${vehicleType})`,
-        price: vehiclePricing?.price || 0,
+        name: serviceName,
+        price,
         technician: tech?.name,
-        hsnCode: serviceHsn || ""
+        hsnCode: serviceHsn || "",
+        warranty,
       } as any);
       setSelectedService("");
       setSelectedTechnician("");
       setServiceHsn("");
+      setSelectedServiceWarranty("");
     }
   };
 

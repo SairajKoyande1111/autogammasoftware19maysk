@@ -45,7 +45,11 @@ const serviceMasterSchema = new mongoose.Schema({
   hsnCode: { type: String, default: "" },
   pricingByVehicleType: [{
     vehicleType: String,
-    price: Number
+    price: Number,
+    warrantyOptions: [{
+      warrantyName: String,
+      price: Number
+    }]
   }]
 });
 

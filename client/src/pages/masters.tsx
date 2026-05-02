@@ -249,9 +249,23 @@ export default function MastersPage() {
                   <CardContent>
                     <div className="space-y-4">
                       {service.pricingByVehicleType.map((p) => (
-                        <div key={p.vehicleType} className="flex justify-between items-center border-b pb-2 last:border-0 last:pb-0">
+                        <div key={p.vehicleType} className="border-b pb-2 last:border-0 last:pb-0 space-y-1">
                           <span className="text-xs font-bold text-primary uppercase">{p.vehicleType}</span>
-                          <span className="font-medium">₹{p.price}</span>
+                          {(p as any).warrantyOptions && (p as any).warrantyOptions.length > 0 ? (
+                            <div className="space-y-0.5 pl-2">
+                              {(p as any).warrantyOptions.map((opt: any, i: number) => (
+                                <div key={i} className="flex justify-between items-center text-sm">
+                                  <span className="text-muted-foreground">{opt.warrantyName}</span>
+                                  <span className="font-medium">₹{opt.price}</span>
+                                </div>
+                              ))}
+                            </div>
+                          ) : (
+                            <div className="flex justify-between items-center">
+                              <span className="text-sm text-muted-foreground">Base Price</span>
+                              <span className="font-medium">₹{p.price}</span>
+                            </div>
+                          )}
                         </div>
                       ))}
                     </div>
@@ -703,7 +717,12 @@ function AddServiceForm({ onClose, vehicleTypes, initialData }: { onClose: () =>
   const { toast } = useToast();
   const [name, setName] = useState(initialData?.name || "");
   const [hsnCode, setHsnCode] = useState((initialData as any)?.hsnCode || "");
-  const [pricing, setPricing] = useState<any[]>(initialData?.pricingByVehicleType || []);
+  const [pricing, setPricing] = useState<any[]>(
+    (initialData?.pricingByVehicleType || []).map((p: any) => ({
+      ...p,
+      warrantyOptions: p.warrantyOptions || [],
+    }))
+  );
 
   const serviceMutation = useMutation({
     mutationFn: (data: any) => {
@@ -721,12 +740,30 @@ function AddServiceForm({ onClose, vehicleTypes, initialData }: { onClose: () =>
 
   const addVehiclePricing = (typeName: string) => {
     if (pricing.some(p => p.vehicleType === typeName)) return;
-    setPricing([...pricing, { vehicleType: typeName, price: 0 }]);
+    setPricing([...pricing, { vehicleType: typeName, price: 0, warrantyOptions: [] }]);
   };
 
   const updatePrice = (typeIndex: number, value: string) => {
     const newPricing = [...pricing];
     newPricing[typeIndex].price = value;
+    setPricing(newPricing);
+  };
+
+  const addWarrantyOption = (typeIndex: number) => {
+    const newPricing = [...pricing];
+    newPricing[typeIndex].warrantyOptions = [...(newPricing[typeIndex].warrantyOptions || []), { warrantyName: "", price: 0 }];
+    setPricing(newPricing);
+  };
+
+  const updateWarrantyOption = (typeIndex: number, optIndex: number, field: string, value: any) => {
+    const newPricing = [...pricing];
+    newPricing[typeIndex].warrantyOptions[optIndex][field] = value;
+    setPricing(newPricing);
+  };
+
+  const removeWarrantyOption = (typeIndex: number, optIndex: number) => {
+    const newPricing = [...pricing];
+    newPricing[typeIndex].warrantyOptions.splice(optIndex, 1);
     setPricing(newPricing);
   };
 
@@ -778,7 +815,7 @@ function AddServiceForm({ onClose, vehicleTypes, initialData }: { onClose: () =>
             </CardHeader>
             <CardContent className="pt-4 space-y-4">
               <div className="space-y-1">
-                <Label className="text-[10px] uppercase text-muted-foreground">Single Price</Label>
+                <Label className="text-[10px] uppercase text-muted-foreground">Base Price (no warranty)</Label>
                 <Input 
                   type="text"
                   inputMode="numeric"
@@ -792,6 +829,56 @@ function AddServiceForm({ onClose, vehicleTypes, initialData }: { onClose: () =>
                     }
                   }}
                 />
+              </div>
+
+              {/* Warranty Options */}
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <Label className="text-[10px] uppercase text-muted-foreground">Warranty Options</Label>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="h-7 text-xs"
+                    onClick={() => addWarrantyOption(typeIndex)}
+                  >
+                    <Plus className="h-3 w-3 mr-1" />
+                    Add Warranty
+                  </Button>
+                </div>
+                {(p.warrantyOptions || []).map((opt: any, optIndex: number) => (
+                  <div key={optIndex} className="flex gap-2 items-center">
+                    <Input
+                      placeholder="Warranty name (e.g. 1 Year)"
+                      value={opt.warrantyName}
+                      onChange={(e) => updateWarrantyOption(typeIndex, optIndex, "warrantyName", e.target.value)}
+                      className="flex-1"
+                    />
+                    <Input
+                      type="text"
+                      inputMode="numeric"
+                      pattern="[0-9]*"
+                      placeholder="Price"
+                      value={opt.price}
+                      onChange={(e) => {
+                        const value = e.target.value;
+                        if (value === "" || /^[0-9]+$/.test(value)) {
+                          updateWarrantyOption(typeIndex, optIndex, "price", value);
+                        }
+                      }}
+                      className="w-28"
+                    />
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="h-9 w-9 shrink-0"
+                      onClick={() => removeWarrantyOption(typeIndex, optIndex)}
+                    >
+                      <X className="h-4 w-4 text-destructive" />
+                    </Button>
+                  </div>
+                ))}
               </div>
             </CardContent>
           </Card>

@@ -846,7 +846,7 @@ export default function AddJobPage() {
     }
   };
 
-  const getEffectiveAccessoryPrice = (a: any) => {
+  const getEffectiveAccessoryPrice = (a: typeof accessories[number]) => {
     if (a.hasDualPricing) {
       if (accessoryWindowType === "4window") return a.price4Window || a.price;
       if (accessoryWindowType === "6window") return a.price6Window || a.price;
@@ -857,7 +857,7 @@ export default function AddJobPage() {
   const handleAddAccessory = () => {
     const a = accessories.find(item => item.id === selectedAccessory);
     if (a) {
-      if ((a as any).hasDualPricing && !accessoryWindowType) {
+      if (a.hasDualPricing && !accessoryWindowType) {
         toast({
           title: "Select Window Type",
           description: "Please select 4 Window or 6 Window pricing for this accessory.",
@@ -896,7 +896,7 @@ export default function AddJobPage() {
       }
 
       const effectivePrice = getEffectiveAccessoryPrice(a);
-      const windowLabel = (a as any).hasDualPricing && accessoryWindowType
+      const windowLabel = a.hasDualPricing && accessoryWindowType
         ? ` (${accessoryWindowType === "4window" ? "4 Window" : "6 Window"})`
         : "";
 
@@ -2008,29 +2008,30 @@ export default function AddJobPage() {
                   </div>
                 </div>
                 {/* Window type selector for dual pricing accessories */}
-                {selectedAccessory && (() => {
-                  const a = accessories.find(acc => acc.id === selectedAccessory);
-                  return a && (a as any).hasDualPricing ? (
+                {(() => {
+                  const a = selectedAccessory ? accessories.find(acc => acc.id === selectedAccessory) : null;
+                  if (!a || !a.hasDualPricing) return null;
+                  return (
                     <div className="flex items-center gap-4 p-3 bg-amber-50 border border-amber-200 rounded-lg">
                       <span className="text-xs font-bold text-amber-700 uppercase whitespace-nowrap">Window Type *</span>
-                      <div className="flex gap-2">
+                      <div className="flex gap-2 flex-wrap">
                         <button
                           type="button"
                           onClick={() => setAccessoryWindowType("4window")}
                           className={`px-4 py-1.5 rounded-md text-sm font-semibold border transition-colors ${accessoryWindowType === "4window" ? "bg-red-600 text-white border-red-600" : "bg-white text-slate-700 border-slate-300 hover:border-red-400"}`}
                         >
-                          4 Window — ₹{(a as any).price4Window || 0}
+                          4 Window — ₹{(a.price4Window || 0).toLocaleString("en-IN")}
                         </button>
                         <button
                           type="button"
                           onClick={() => setAccessoryWindowType("6window")}
                           className={`px-4 py-1.5 rounded-md text-sm font-semibold border transition-colors ${accessoryWindowType === "6window" ? "bg-red-600 text-white border-red-600" : "bg-white text-slate-700 border-slate-300 hover:border-red-400"}`}
                         >
-                          6 Window — ₹{(a as any).price6Window || 0}
+                          6 Window — ₹{(a.price6Window || 0).toLocaleString("en-IN")}
                         </button>
                       </div>
                     </div>
-                  ) : null;
+                  );
                 })()}
                 <div className="grid grid-cols-1 md:grid-cols-12 gap-4 items-end">
                   <div className="md:col-span-5 space-y-1.5">

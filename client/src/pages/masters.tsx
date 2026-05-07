@@ -1461,26 +1461,33 @@ function AddAccessoryForm({
   const [name, setName] = useState(initialData?.name || "");
   const [quantity, setQuantity] = useState(initialData?.quantity?.toString() || "0");
   const [price, setPrice] = useState(initialData?.price?.toString() || "0");
-  const [hsnCode, setHsnCode] = useState((initialData as any)?.hsnCode || "");
-  const [hasDualPricing, setHasDualPricing] = useState((initialData as any)?.hasDualPricing || false);
-  const [price4Window, setPrice4Window] = useState((initialData as any)?.price4Window?.toString() || "0");
-  const [price6Window, setPrice6Window] = useState((initialData as any)?.price6Window?.toString() || "0");
+  const [hsnCode, setHsnCode] = useState(initialData?.hsnCode || "");
+  const [hasDualPricing, setHasDualPricing] = useState(initialData?.hasDualPricing || false);
+  const [price4Window, setPrice4Window] = useState((initialData?.price4Window ?? 0).toString());
+  const [price6Window, setPrice6Window] = useState((initialData?.price6Window ?? 0).toString());
 
   const { data: accessories = [] } = useQuery<AccessoryMaster[]>({
     queryKey: [api.masters.accessories.list.path],
   });
 
   const accessoryMutation = useMutation({
-    mutationFn: (data: any) => {
+    mutationFn: async (data: any) => {
+      let res: Response;
       if (initialData?.id) {
-        return apiRequest("PATCH", `/api/masters/accessories/${initialData.id}`, data);
+        res = await apiRequest("PATCH", `/api/masters/accessories/${initialData.id}`, data);
+      } else {
+        res = await apiRequest("POST", api.masters.accessories.create.path, data);
       }
-      return apiRequest("POST", api.masters.accessories.create.path, data);
+      return res.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [api.masters.accessories.list.path] });
+      queryClient.refetchQueries({ queryKey: [api.masters.accessories.list.path] });
       toast({ title: "Success", description: initialData ? "Accessory updated successfully" : "Accessory added successfully" });
       onClose();
+    },
+    onError: (err: any) => {
+      toast({ title: "Failed to save", description: err?.message || "Something went wrong.", variant: "destructive" });
     },
   });
 

@@ -3,27 +3,7 @@ import { Input } from "@/components/ui/input";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { api } from "@shared/routes";
 import { queryClient, apiRequest } from "@/lib/queryClient";
-
-export const HSN_CODES = [
-  { code: "998713", description: "PPF Installation / Ceramic Coating / Car Detailing / Paint Correction / Denting & Painting" },
-  { code: "998538", description: "Car Wash / Cleaning / Interior Cleaning" },
-  { code: "3919",   description: "PPF Film (Supply / Sale)" },
-  { code: "3824",   description: "Ceramic Coating Liquid" },
-  { code: "3405",   description: "Car Polish / Rubbing Compound" },
-  { code: "3402",   description: "Car Shampoo" },
-  { code: "6307",   description: "Microfiber Cloth" },
-  { code: "9603",   description: "Detailing Brush" },
-  { code: "87089900", description: "Seat Covers / Car Mats / Steering Cover / Body Kit / Roof Rails / Door Visor / Spoiler" },
-  { code: "94049099", description: "Car Neck Cushion" },
-  { code: "85198100", description: "Car Audio System / Music System" },
-  { code: "852859",  description: "Android CarPlay System" },
-  { code: "852580",  description: "Dash Camera" },
-  { code: "8708",    description: "General Motor Vehicle Parts" },
-  { code: "851810",  description: "Speaker / Subwoofer / Amplifier" },
-  { code: "85122020", description: "LED Headlights / Fog Lamps / LED Light Bar" },
-  { code: "94054090", description: "Ambient Light" },
-  { code: "33030090", description: "Perfumes / Fragrance / Car Perfume" },
-];
+import { HSN_CODES } from "@/lib/hsn-codes";
 
 export function HsnCombobox({
   value,
@@ -36,6 +16,8 @@ export function HsnCombobox({
 }) {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState(value);
+  const [addingNew, setAddingNew] = useState(false);
+  const [newDescription, setNewDescription] = useState("");
   const wrapRef = useRef<HTMLDivElement>(null);
 
   const { data: dbCodes = [] } = useQuery<{ id: string; code: string; description: string }[]>({
@@ -54,7 +36,11 @@ export function HsnCombobox({
 
   useEffect(() => {
     function handleClick(e: MouseEvent) {
-      if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) setOpen(false);
+      if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) {
+        setOpen(false);
+        setAddingNew(false);
+        setNewDescription("");
+      }
     }
     document.addEventListener("mousedown", handleClick);
     return () => document.removeEventListener("mousedown", handleClick);
@@ -73,16 +59,16 @@ export function HsnCombobox({
   const exactMatch = allCodes.some(h => h.code === search);
   const showAddNew = search.length >= 2 && !exactMatch;
 
-  const handleAddNew = () => {
-    const description = prompt(`Enter description for HSN code "${search}":`, "");
-    if (description && description.trim()) {
-      addMutation.mutate({ code: search.trim(), description: description.trim() }, {
-        onSuccess: () => {
-          onChange(search.trim());
-          setOpen(false);
-        }
-      });
-    }
+  const handleConfirmAdd = () => {
+    if (!newDescription.trim()) return;
+    addMutation.mutate({ code: search.trim(), description: newDescription.trim() }, {
+      onSuccess: () => {
+        onChange(search.trim());
+        setOpen(false);
+        setAddingNew(false);
+        setNewDescription("");
+      }
+    });
   };
 
   return (
@@ -93,10 +79,10 @@ export function HsnCombobox({
         value={search}
         onFocus={() => setOpen(true)}
         onClick={() => setOpen(true)}
-        onChange={e => { setSearch(e.target.value); onChange(e.target.value); setOpen(true); }}
+        onChange={e => { setSearch(e.target.value); onChange(e.target.value); setOpen(true); setAddingNew(false); }}
       />
       {open && (filtered.length > 0 || showAddNew) && (
-        <div className="absolute left-0 top-full mt-1 z-[9999] bg-white border border-border rounded-lg shadow-2xl max-h-52 overflow-y-auto min-w-[320px] w-full">
+        <div className="absolute left-0 top-full mt-1 z-[9999] bg-white border border-border rounded-lg shadow-2xl max-h-64 overflow-y-auto min-w-[320px] w-full">
           {filtered.map(h => (
             <button
               key={h.code}
@@ -110,14 +96,45 @@ export function HsnCombobox({
               </div>
             </button>
           ))}
-          {showAddNew && (
+          {showAddNew && !addingNew && (
             <button
               type="button"
-              className="w-full text-left px-3 py-2 hover:bg-red-50 transition-colors text-red-600 font-semibold text-xs flex items-center gap-1"
-              onMouseDown={e => { e.preventDefault(); handleAddNew(); }}
+              className="w-full text-left px-3 py-2 hover:bg-red-50 transition-colors text-red-600 font-semibold text-xs flex items-center gap-1 border-t border-border/30"
+              onMouseDown={e => { e.preventDefault(); setAddingNew(true); }}
             >
-              + Add "{search}" as new HSN code
+              <span className="text-base leading-none">+</span> Add "{search}" as new HSN code
             </button>
+          )}
+          {showAddNew && addingNew && (
+            <div className="px-3 py-2 border-t border-border/30 space-y-2">
+              <p className="text-xs font-semibold text-slate-600">Adding HSN code: <span className="text-red-600 font-mono">{search}</span></p>
+              <Input
+                autoFocus
+                className="h-8 text-xs"
+                placeholder="Enter description..."
+                value={newDescription}
+                onMouseDown={e => e.stopPropagation()}
+                onChange={e => setNewDescription(e.target.value)}
+                onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); handleConfirmAdd(); } if (e.key === "Escape") { setAddingNew(false); setNewDescription(""); } }}
+              />
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  className="flex-1 bg-red-600 text-white text-xs font-semibold rounded px-2 py-1 hover:bg-red-700 disabled:opacity-50"
+                  onMouseDown={e => { e.preventDefault(); handleConfirmAdd(); }}
+                  disabled={!newDescription.trim() || addMutation.isPending}
+                >
+                  {addMutation.isPending ? "Saving..." : "Save"}
+                </button>
+                <button
+                  type="button"
+                  className="text-xs text-slate-500 px-2 py-1 hover:text-slate-700"
+                  onMouseDown={e => { e.preventDefault(); setAddingNew(false); setNewDescription(""); }}
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
           )}
         </div>
       )}

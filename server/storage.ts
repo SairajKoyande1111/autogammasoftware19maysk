@@ -24,6 +24,8 @@ import {
   InsertVendor,
   VendorPurchase,
   InsertVendorPurchase,
+  Expense,
+  InsertExpense,
 } from "@shared/schema";
 import session from "express-session";
 // @ts-ignore
@@ -90,10 +92,24 @@ const accessoryMasterSchema = new mongoose.Schema({
   name: { type: String, required: true },
   quantity: { type: Number, required: true },
   price: { type: Number, required: true },
-  hsnCode: { type: String, default: "" }
+  hsnCode: { type: String, default: "" },
+  hasDualPricing: { type: Boolean, default: false },
+  price4Window: { type: Number, default: 0 },
+  price6Window: { type: Number, default: 0 },
 });
 
 export const AccessoryMasterModel = mongoose.model("AccessoryMaster", accessoryMasterSchema);
+
+const expenseMongoSchema = new mongoose.Schema({
+  name: { type: String, required: true },
+  details: { type: String, default: "" },
+  price: { type: Number, required: true },
+  date: { type: String, required: true },
+  category: { type: String, default: "" },
+  createdAt: { type: String, default: () => new Date().toISOString() },
+});
+
+export const ExpenseModel = mongoose.model("Expense", expenseMongoSchema);
 
 const technicianMongoSchema = new mongoose.Schema({
   name: { type: String, required: true },
@@ -382,6 +398,13 @@ export interface IStorage {
   updateHsnCode(id: string, data: { code?: string; description?: string }): Promise<{ id: string; code: string; description: string } | undefined>;
   deleteHsnCode(id: string): Promise<boolean>;
 
+  // Expenses
+  getExpenses(): Promise<Expense[]>;
+  getExpense(id: string): Promise<Expense | undefined>;
+  createExpense(expense: InsertExpense): Promise<Expense>;
+  updateExpense(id: string, expense: Partial<InsertExpense>): Promise<Expense | undefined>;
+  deleteExpense(id: string): Promise<boolean>;
+
   // Vendor Management
   getVendors(): Promise<Vendor[]>;
   getVendor(id: string): Promise<Vendor | undefined>;
@@ -590,7 +613,10 @@ export class MongoStorage implements IStorage {
       name: a.name,
       quantity: a.quantity,
       price: a.price,
-      hsnCode: (a as any).hsnCode || ""
+      hsnCode: (a as any).hsnCode || "",
+      hasDualPricing: (a as any).hasDualPricing || false,
+      price4Window: (a as any).price4Window || 0,
+      price6Window: (a as any).price6Window || 0,
     }));
   }
 
@@ -603,7 +629,10 @@ export class MongoStorage implements IStorage {
       name: a.name,
       quantity: a.quantity,
       price: a.price,
-      hsnCode: (a as any).hsnCode || ""
+      hsnCode: (a as any).hsnCode || "",
+      hasDualPricing: (a as any).hasDualPricing || false,
+      price4Window: (a as any).price4Window || 0,
+      price6Window: (a as any).price6Window || 0,
     };
   }
 
@@ -616,7 +645,10 @@ export class MongoStorage implements IStorage {
       name: a.name,
       quantity: a.quantity,
       price: a.price,
-      hsnCode: (a as any).hsnCode || ""
+      hsnCode: (a as any).hsnCode || "",
+      hasDualPricing: (a as any).hasDualPricing || false,
+      price4Window: (a as any).price4Window || 0,
+      price6Window: (a as any).price6Window || 0,
     };
   }
 
@@ -692,6 +724,66 @@ export class MongoStorage implements IStorage {
 
   async deleteHsnCode(id: string): Promise<boolean> {
     const result = await HsnCodeModel.findByIdAndDelete(id);
+    return !!result;
+  }
+
+  async getExpenses(): Promise<Expense[]> {
+    const expenses = await ExpenseModel.find().sort({ date: -1, createdAt: -1 });
+    return expenses.map(e => ({
+      id: e._id.toString(),
+      name: e.name,
+      details: (e as any).details || "",
+      price: e.price,
+      date: e.date,
+      category: (e as any).category || "",
+      createdAt: (e as any).createdAt || new Date().toISOString(),
+    }));
+  }
+
+  async getExpense(id: string): Promise<Expense | undefined> {
+    const e = await ExpenseModel.findById(id);
+    if (!e) return undefined;
+    return {
+      id: e._id.toString(),
+      name: e.name,
+      details: (e as any).details || "",
+      price: e.price,
+      date: e.date,
+      category: (e as any).category || "",
+      createdAt: (e as any).createdAt || new Date().toISOString(),
+    };
+  }
+
+  async createExpense(expense: InsertExpense): Promise<Expense> {
+    const e = new ExpenseModel({ ...expense, createdAt: new Date().toISOString() });
+    await e.save();
+    return {
+      id: e._id.toString(),
+      name: e.name,
+      details: (e as any).details || "",
+      price: e.price,
+      date: e.date,
+      category: (e as any).category || "",
+      createdAt: (e as any).createdAt || new Date().toISOString(),
+    };
+  }
+
+  async updateExpense(id: string, expense: Partial<InsertExpense>): Promise<Expense | undefined> {
+    const e = await ExpenseModel.findByIdAndUpdate(id, expense, { new: true });
+    if (!e) return undefined;
+    return {
+      id: e._id.toString(),
+      name: e.name,
+      details: (e as any).details || "",
+      price: e.price,
+      date: e.date,
+      category: (e as any).category || "",
+      createdAt: (e as any).createdAt || new Date().toISOString(),
+    };
+  }
+
+  async deleteExpense(id: string): Promise<boolean> {
+    const result = await ExpenseModel.findByIdAndDelete(id);
     return !!result;
   }
 

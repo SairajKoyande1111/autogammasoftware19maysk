@@ -13,6 +13,7 @@ import {
   Settings, 
   LogOut,
   Building2,
+  Wallet,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/use-auth";
@@ -31,6 +32,7 @@ const navItems = [
   { icon: Database, label: "Old Customers", href: "/old-customers" },
   { icon: Database, label: "Masters", href: "/masters" },
   { icon: Building2, label: "Vendor Management", href: "/vendor-management" },
+  { icon: Wallet, label: "Expenses", href: "/expenses" },
   { icon: Settings, label: "Settings", href: "/settings" },
 ];
 

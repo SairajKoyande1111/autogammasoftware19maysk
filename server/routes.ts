@@ -829,6 +829,41 @@ app.use((req, res, next) => {
     res.json({ message: "Purchase deleted" });
   });
 
+  // Expense Routes
+  app.get("/api/expenses", async (req, res) => {
+    if (!(req.session as any).userId) return res.sendStatus(401);
+    const expenses = await storage.getExpenses();
+    res.json(expenses);
+  });
+
+  app.post("/api/expenses", async (req, res) => {
+    if (!(req.session as any).userId) return res.sendStatus(401);
+    try {
+      const expense = await storage.createExpense(req.body);
+      res.status(201).json(expense);
+    } catch (error: any) {
+      res.status(400).json({ message: error.message || "Invalid input" });
+    }
+  });
+
+  app.patch("/api/expenses/:id", async (req, res) => {
+    if (!(req.session as any).userId) return res.sendStatus(401);
+    try {
+      const expense = await storage.updateExpense(req.params.id, req.body);
+      if (!expense) return res.status(404).json({ message: "Expense not found" });
+      res.json(expense);
+    } catch (error: any) {
+      res.status(400).json({ message: error.message || "Invalid input" });
+    }
+  });
+
+  app.delete("/api/expenses/:id", async (req, res) => {
+    if (!(req.session as any).userId) return res.sendStatus(401);
+    const success = await storage.deleteExpense(req.params.id);
+    if (!success) return res.status(404).json({ message: "Expense not found" });
+    res.json({ message: "Expense deleted" });
+  });
+
   // Seed default user if not exists
   if (mongoose.connection.readyState === 1) {
     const defaultEmail = "abhishek@autogamma.in";

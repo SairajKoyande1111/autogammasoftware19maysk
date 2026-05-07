@@ -142,11 +142,29 @@ export const accessoryMasterSchema = z.object({
   quantity: z.coerce.number(),
   price: z.coerce.number(),
   hsnCode: z.string().optional().default(""),
+  hasDualPricing: z.boolean().optional().default(false),
+  price4Window: z.coerce.number().optional().default(0),
+  price6Window: z.coerce.number().optional().default(0),
 });
 
 export type AccessoryMaster = z.infer<typeof accessoryMasterSchema>;
 export const insertAccessoryMasterSchema = accessoryMasterSchema.omit({ id: true });
 export type InsertAccessoryMaster = z.infer<typeof insertAccessoryMasterSchema>;
+
+// Expense Schemas
+export const expenseSchema = z.object({
+  id: z.string().optional(),
+  name: z.string().min(1),
+  details: z.string().optional().default(""),
+  price: z.coerce.number().min(0),
+  date: z.string(),
+  category: z.string().optional().default(""),
+  createdAt: z.string().default(() => new Date().toISOString()),
+});
+
+export type Expense = z.infer<typeof expenseSchema>;
+export const insertExpenseSchema = expenseSchema.omit({ id: true, createdAt: true });
+export type InsertExpense = z.infer<typeof insertExpenseSchema>;
 
 // Technician Schemas
 export const technicianSchema = z.object({

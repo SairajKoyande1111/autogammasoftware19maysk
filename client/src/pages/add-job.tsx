@@ -504,6 +504,7 @@ export default function AddJobPage() {
   const [newAccessoryPrice, setNewAccessoryPrice] = useState<string>("");
   const [selectedAccessory, setSelectedAccessory] = useState("");
   const [accessoryQty, setAccessoryQty] = useState(1);
+  const [accessoryWindowType, setAccessoryWindowType] = useState<"4window" | "6window" | "">("");
 
   const filteredCategories = Array.from(new Set(accessories.map(a => a.category))).filter(cat => 
     cat.toLowerCase().includes(categorySearch.toLowerCase())
@@ -845,9 +846,26 @@ export default function AddJobPage() {
     }
   };
 
+  const getEffectiveAccessoryPrice = (a: any) => {
+    if (a.hasDualPricing) {
+      if (accessoryWindowType === "4window") return a.price4Window || a.price;
+      if (accessoryWindowType === "6window") return a.price6Window || a.price;
+    }
+    return a.price;
+  };
+
   const handleAddAccessory = () => {
     const a = accessories.find(item => item.id === selectedAccessory);
     if (a) {
+      if ((a as any).hasDualPricing && !accessoryWindowType) {
+        toast({
+          title: "Select Window Type",
+          description: "Please select 4 Window or 6 Window pricing for this accessory.",
+          variant: "destructive",
+        });
+        return;
+      }
+
       const usedInCurrentJob = accessoryFields.reduce((sum, field: any) => {
         if (field.accessoryId === selectedAccessory) {
           return sum + (Number(field.quantity) || 0);
@@ -855,12 +873,6 @@ export default function AddJobPage() {
         return sum;
       }, 0);
 
-      // When editing, the master stock already has the current job's quantity deducted.
-      // So "available" for adding MORE should be: MasterStock - (NewlyAddedInForm - AlreadyInJob)
-      // But actually, it's simpler: The master stock (a.quantity) is what is in the warehouse NOW.
-      // If we are editing, and the job already uses 10, and master says 90, then total existence is 100.
-      // The user wants to see "90" if they haven't changed anything in the current edit session.
-      
       const originalQty = jobToEdit?.accessories?.find((acc: any) => 
         (acc.accessoryId || acc.id || acc._id) === selectedAccessory
       )?.quantity || 0;
@@ -883,13 +895,17 @@ export default function AddJobPage() {
         return;
       }
 
-      // Check if already in list to update quantity instead of appending
+      const effectivePrice = getEffectiveAccessoryPrice(a);
+      const windowLabel = (a as any).hasDualPricing && accessoryWindowType
+        ? ` (${accessoryWindowType === "4window" ? "4 Window" : "6 Window"})`
+        : "";
+
       const existingIndex = accessoryFields.findIndex((field: any) => field.accessoryId === a.id);
       if (existingIndex !== -1) {
         const currentAccessories = [...form.getValues("accessories")];
         currentAccessories[existingIndex] = {
           ...currentAccessories[existingIndex],
-          category: a.category, // Ensure category name is passed
+          category: a.category,
           quantity: (Number(currentAccessories[existingIndex].quantity) || 0) + accessoryQty
         };
         form.setValue("accessories", currentAccessories);
@@ -897,9 +913,9 @@ export default function AddJobPage() {
         appendAccessory({ 
           accessoryId: a.id!, 
           id: a.id!,
-          name: a.name, 
+          name: `${a.name}${windowLabel}`, 
           category: a.category,
-          price: a.price,
+          price: effectivePrice,
           quantity: accessoryQty,
           hsnCode: accessoryHsn || ""
         } as any);
@@ -907,6 +923,7 @@ export default function AddJobPage() {
       setSelectedAccessory("");
       setAccessoryQty(1);
       setAccessoryHsn("");
+      setAccessoryWindowType("");
     }
   };
 
@@ -1905,7 +1922,7 @@ export default function AddJobPage() {
                     <label className="text-xs font-bold text-muted-foreground uppercase">Accessory Name</label>
                     <Select 
                       value={selectedAccessory} 
-                      onValueChange={setSelectedAccessory} 
+                      onValueChange={(val) => { setSelectedAccessory(val); setAccessoryWindowType(""); }} 
                       disabled={!selectedAccessoryCategory}
                     >
                       <SelectTrigger className="h-11">
@@ -1978,7 +1995,10 @@ export default function AddJobPage() {
                   <div className="md:col-span-2 space-y-1.5">
                     <label className="text-xs font-bold text-muted-foreground uppercase">Price</label>
                     <div className="h-11 flex items-center px-3 border rounded-md bg-slate-50 font-medium text-slate-700">
-                      ₹{selectedAccessory ? (accessories.find(a => a.id === selectedAccessory)?.price || 0) * accessoryQty : 0}
+                      ₹{selectedAccessory ? (() => {
+                        const a = accessories.find(acc => acc.id === selectedAccessory);
+                        return a ? getEffectiveAccessoryPrice(a) * accessoryQty : 0;
+                      })() : 0}
                     </div>
                   </div>
                   <div className="md:col-span-2">
@@ -1987,6 +2007,31 @@ export default function AddJobPage() {
                     </Button>
                   </div>
                 </div>
+                {/* Window type selector for dual pricing accessories */}
+                {selectedAccessory && (() => {
+                  const a = accessories.find(acc => acc.id === selectedAccessory);
+                  return a && (a as any).hasDualPricing ? (
+                    <div className="flex items-center gap-4 p-3 bg-amber-50 border border-amber-200 rounded-lg">
+                      <span className="text-xs font-bold text-amber-700 uppercase whitespace-nowrap">Window Type *</span>
+                      <div className="flex gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setAccessoryWindowType("4window")}
+                          className={`px-4 py-1.5 rounded-md text-sm font-semibold border transition-colors ${accessoryWindowType === "4window" ? "bg-red-600 text-white border-red-600" : "bg-white text-slate-700 border-slate-300 hover:border-red-400"}`}
+                        >
+                          4 Window — ₹{(a as any).price4Window || 0}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setAccessoryWindowType("6window")}
+                          className={`px-4 py-1.5 rounded-md text-sm font-semibold border transition-colors ${accessoryWindowType === "6window" ? "bg-red-600 text-white border-red-600" : "bg-white text-slate-700 border-slate-300 hover:border-red-400"}`}
+                        >
+                          6 Window — ₹{(a as any).price6Window || 0}
+                        </button>
+                      </div>
+                    </div>
+                  ) : null;
+                })()}
                 <div className="grid grid-cols-1 md:grid-cols-12 gap-4 items-end">
                   <div className="md:col-span-5 space-y-1.5">
                     <label className="text-xs font-bold text-muted-foreground uppercase">HSN Code</label>

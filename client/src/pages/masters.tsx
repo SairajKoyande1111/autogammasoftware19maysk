@@ -730,6 +730,18 @@ export default function MastersPage() {
                         <span className="font-bold text-xl text-primary">₹{accessory.price}</span>
                       </div>
                     </div>
+                    {(accessory as any).hasDualPricing && (
+                      <div className="mt-3 pt-3 border-t grid grid-cols-2 gap-2">
+                        <div className="bg-slate-50 rounded p-2 text-center">
+                          <div className="text-[10px] uppercase text-muted-foreground font-medium">4 Window</div>
+                          <div className="font-bold text-sm text-primary">₹{(accessory as any).price4Window || 0}</div>
+                        </div>
+                        <div className="bg-slate-50 rounded p-2 text-center">
+                          <div className="text-[10px] uppercase text-muted-foreground font-medium">6 Window</div>
+                          <div className="font-bold text-sm text-primary">₹{(accessory as any).price6Window || 0}</div>
+                        </div>
+                      </div>
+                    )}
                   </CardContent>
                 </Card>
               ))}
@@ -1450,6 +1462,9 @@ function AddAccessoryForm({
   const [quantity, setQuantity] = useState(initialData?.quantity?.toString() || "0");
   const [price, setPrice] = useState(initialData?.price?.toString() || "0");
   const [hsnCode, setHsnCode] = useState((initialData as any)?.hsnCode || "");
+  const [hasDualPricing, setHasDualPricing] = useState((initialData as any)?.hasDualPricing || false);
+  const [price4Window, setPrice4Window] = useState((initialData as any)?.price4Window?.toString() || "0");
+  const [price6Window, setPrice6Window] = useState((initialData as any)?.price6Window?.toString() || "0");
 
   const { data: accessories = [] } = useQuery<AccessoryMaster[]>({
     queryKey: [api.masters.accessories.list.path],
@@ -1521,7 +1536,7 @@ function AddAccessoryForm({
           />
         </div>
         <div className="space-y-2">
-          <Label>Price (₹)</Label>
+          <Label>Default Price (₹)</Label>
           <Input 
             type="number" 
             placeholder="0" 
@@ -1530,6 +1545,43 @@ function AddAccessoryForm({
           />
         </div>
       </div>
+
+      {/* Dual Window Pricing Toggle */}
+      <div className="flex items-center gap-3 p-3 border rounded-lg bg-slate-50">
+        <input
+          type="checkbox"
+          id="hasDualPricing"
+          checked={hasDualPricing}
+          onChange={(e) => setHasDualPricing(e.target.checked)}
+          className="h-4 w-4 accent-red-600 cursor-pointer"
+        />
+        <label htmlFor="hasDualPricing" className="text-sm font-medium cursor-pointer select-none">
+          Enable Window-based Pricing (4 Window / 6 Window)
+        </label>
+      </div>
+
+      {hasDualPricing && (
+        <div className="grid grid-cols-2 gap-4">
+          <div className="space-y-2">
+            <Label>4 Window Price (₹)</Label>
+            <Input 
+              type="number" 
+              placeholder="0" 
+              value={price4Window} 
+              onChange={(e) => setPrice4Window(e.target.value)} 
+            />
+          </div>
+          <div className="space-y-2">
+            <Label>6 Window Price (₹)</Label>
+            <Input 
+              type="number" 
+              placeholder="0" 
+              value={price6Window} 
+              onChange={(e) => setPrice6Window(e.target.value)} 
+            />
+          </div>
+        </div>
+      )}
 
       <div className="space-y-2">
         <Label>HSN Code <span className="text-muted-foreground font-normal text-xs">(optional)</span></Label>
@@ -1547,7 +1599,10 @@ function AddAccessoryForm({
           name, 
           quantity: parseInt(quantity) || 0, 
           price: parseInt(price) || 0,
-          hsnCode
+          hsnCode,
+          hasDualPricing,
+          price4Window: hasDualPricing ? (parseFloat(price4Window) || 0) : 0,
+          price6Window: hasDualPricing ? (parseFloat(price6Window) || 0) : 0,
         })}>
           {initialData ? "Update Accessory" : "Save Accessory"}
         </Button>

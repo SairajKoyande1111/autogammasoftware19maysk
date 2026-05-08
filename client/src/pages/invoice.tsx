@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { format } from "date-fns";
-import { FileText, Loader2, Search, Trash2, Eye, ArrowUpDown, Printer, Send, Download, Calendar } from "lucide-react";
+import { FileText, Loader2, Search, Trash2, Eye, ArrowUpDown, Printer, Send, Download, CalendarIcon, X as XIcon } from "lucide-react";
 import * as XLSX from "xlsx";
 import html2canvas from "html2canvas";
 import jsPDF from "jspdf";
@@ -29,7 +29,52 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Calendar } from "@/components/ui/calendar";
 import autoGammaLogo from "@assets/image_1769446487293.png";
+
+function DatePickerButton({
+  value,
+  onChange,
+  placeholder = "Pick date",
+  testId,
+}: {
+  value: string;
+  onChange: (val: string) => void;
+  placeholder?: string;
+  testId?: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const selected = value ? new Date(value + "T00:00:00") : undefined;
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button
+          variant="outline"
+          data-testid={testId}
+          className="h-9 w-36 justify-start gap-2 text-sm font-normal bg-white hover:bg-slate-50"
+        >
+          <CalendarIcon className="h-3.5 w-3.5 text-slate-400 shrink-0" />
+          <span className={value ? "text-slate-900" : "text-slate-400"}>
+            {value ? format(new Date(value + "T00:00:00"), "dd MMM yyyy") : placeholder}
+          </span>
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent className="w-auto p-0" align="start">
+        <Calendar
+          mode="single"
+          selected={selected}
+          onSelect={(date) => {
+            onChange(date ? format(date, "yyyy-MM-dd") : "");
+            setOpen(false);
+          }}
+          initialFocus
+        />
+      </PopoverContent>
+    </Popover>
+  );
+}
 
 const BUSINESS_INFO: Record<string, { name: string; address: string; phone: string; email: string; website: string; logo: string | null }> = {
   "Auto Gamma": {
@@ -755,31 +800,23 @@ export default function InvoicePage() {
           {/* From date */}
           <div className="flex items-center gap-1.5">
             <label className="text-xs font-semibold text-slate-500 whitespace-nowrap">From</label>
-            <div className="relative">
-              <Calendar className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400 pointer-events-none" />
-              <Input
-                type="date"
-                value={fromDate}
-                onChange={(e) => setFromDate(e.target.value)}
-                className="pl-8 h-9 w-36 text-sm"
-                data-testid="input-from-date"
-              />
-            </div>
+            <DatePickerButton
+              value={fromDate}
+              onChange={setFromDate}
+              placeholder="Start date"
+              testId="input-from-date"
+            />
           </div>
 
           {/* To date */}
           <div className="flex items-center gap-1.5">
             <label className="text-xs font-semibold text-slate-500 whitespace-nowrap">To</label>
-            <div className="relative">
-              <Calendar className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400 pointer-events-none" />
-              <Input
-                type="date"
-                value={toDate}
-                onChange={(e) => setToDate(e.target.value)}
-                className="pl-8 h-9 w-36 text-sm"
-                data-testid="input-to-date"
-              />
-            </div>
+            <DatePickerButton
+              value={toDate}
+              onChange={setToDate}
+              placeholder="End date"
+              testId="input-to-date"
+            />
           </div>
 
           {(fromDate || toDate) && (

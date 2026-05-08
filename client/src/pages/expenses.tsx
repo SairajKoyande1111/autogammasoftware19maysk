@@ -16,9 +16,10 @@ import {
   Edit2,
   Trash2,
   TrendingDown,
-  Calendar,
+  CalendarIcon,
   Search,
   X,
+  Eye,
 } from "lucide-react";
 import {
   Dialog,
@@ -27,6 +28,9 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Calendar } from "@/components/ui/calendar";
+import { format } from "date-fns";
 
 function fmtINR(n: number) {
   return n.toLocaleString("en-IN");
@@ -54,6 +58,49 @@ function todayStr() {
 function thisMonthStr() {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+}
+
+function DatePickerButton({
+  value,
+  onChange,
+  placeholder = "Pick date",
+  testId,
+}: {
+  value: string;
+  onChange: (val: string) => void;
+  placeholder?: string;
+  testId?: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const selected = value ? new Date(value + "T00:00:00") : undefined;
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button
+          variant="outline"
+          data-testid={testId}
+          className="h-9 w-36 justify-start gap-2 text-sm font-normal bg-white hover:bg-slate-50"
+        >
+          <CalendarIcon className="h-3.5 w-3.5 text-slate-400 shrink-0" />
+          <span className={value ? "text-slate-900" : "text-slate-400"}>
+            {value ? format(new Date(value + "T00:00:00"), "dd MMM yyyy") : placeholder}
+          </span>
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent className="w-auto p-0" align="start">
+        <Calendar
+          mode="single"
+          selected={selected}
+          onSelect={(date) => {
+            onChange(date ? format(date, "yyyy-MM-dd") : "");
+            setOpen(false);
+          }}
+          initialFocus
+        />
+      </PopoverContent>
+    </Popover>
+  );
 }
 
 function ExpenseForm({ onClose, initialData }: { onClose: () => void; initialData?: Expense }) {
@@ -122,7 +169,7 @@ function ExpenseForm({ onClose, initialData }: { onClose: () => void; initialDat
         </div>
         <div className="space-y-1.5">
           <Label>Date *</Label>
-          <Input data-testid="input-expense-date" type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+          <DatePickerButton value={date} onChange={setDate} placeholder="Select date" testId="input-expense-date" />
         </div>
       </div>
       <div className="space-y-1.5">
@@ -139,10 +186,47 @@ function ExpenseForm({ onClose, initialData }: { onClose: () => void; initialDat
   );
 }
 
+function ExpenseViewDialog({ expense, onClose }: { expense: Expense; onClose: () => void }) {
+  return (
+    <div className="space-y-4 py-2">
+      <div className="grid grid-cols-2 gap-4">
+        <div>
+          <p className="text-xs font-bold uppercase text-slate-400 mb-1">Date</p>
+          <p className="text-sm font-semibold text-slate-800">{formatDate(expense.date)}</p>
+        </div>
+        <div>
+          <p className="text-xs font-bold uppercase text-slate-400 mb-1">Amount</p>
+          <p className="text-lg font-bold text-primary">₹{fmtINR(expense.price)}</p>
+        </div>
+      </div>
+      <div>
+        <p className="text-xs font-bold uppercase text-slate-400 mb-1">Expense Name</p>
+        <p className="text-sm font-semibold text-slate-800">{expense.name}</p>
+      </div>
+      {expense.category && (
+        <div>
+          <p className="text-xs font-bold uppercase text-slate-400 mb-1">Category</p>
+          <Badge variant="secondary" className="text-xs bg-slate-100 text-slate-600">{expense.category}</Badge>
+        </div>
+      )}
+      {expense.details && (
+        <div>
+          <p className="text-xs font-bold uppercase text-slate-400 mb-1">Details</p>
+          <p className="text-sm text-slate-700 bg-slate-50 rounded-md p-3 border">{expense.details}</p>
+        </div>
+      )}
+      <div className="flex justify-end pt-2 border-t">
+        <Button variant="outline" onClick={onClose}>Close</Button>
+      </div>
+    </div>
+  );
+}
+
 export default function ExpensesPage() {
   const { toast } = useToast();
   const [isAddOpen, setIsAddOpen] = useState(false);
   const [editingExpense, setEditingExpense] = useState<Expense | null>(null);
+  const [viewingExpense, setViewingExpense] = useState<Expense | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
@@ -225,7 +309,7 @@ export default function ExpensesPage() {
             <CardContent className="pt-5 pb-4">
               <div className="flex items-center justify-between mb-1">
                 <span className="text-xs font-bold uppercase text-muted-foreground">Today</span>
-                <Calendar className="h-4 w-4 text-muted-foreground" />
+                <CalendarIcon className="h-4 w-4 text-muted-foreground" />
               </div>
               <div className="text-2xl font-bold text-slate-900">₹{fmtINR(totalToday)}</div>
               <div className="text-xs text-muted-foreground mt-0.5">{formatDate(today)}</div>
@@ -275,31 +359,23 @@ export default function ExpensesPage() {
           {/* From date */}
           <div className="flex items-center gap-1.5">
             <label className="text-xs font-semibold text-slate-500 whitespace-nowrap">From</label>
-            <div className="relative">
-              <Calendar className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400 pointer-events-none" />
-              <Input
-                type="date"
-                value={fromDate}
-                onChange={(e) => setFromDate(e.target.value)}
-                className="pl-8 h-9 w-36 text-sm"
-                data-testid="input-from-date"
-              />
-            </div>
+            <DatePickerButton
+              value={fromDate}
+              onChange={setFromDate}
+              placeholder="Start date"
+              testId="input-from-date"
+            />
           </div>
 
           {/* To date */}
           <div className="flex items-center gap-1.5">
             <label className="text-xs font-semibold text-slate-500 whitespace-nowrap">To</label>
-            <div className="relative">
-              <Calendar className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400 pointer-events-none" />
-              <Input
-                type="date"
-                value={toDate}
-                onChange={(e) => setToDate(e.target.value)}
-                className="pl-8 h-9 w-36 text-sm"
-                data-testid="input-to-date"
-              />
-            </div>
+            <DatePickerButton
+              value={toDate}
+              onChange={setToDate}
+              placeholder="End date"
+              testId="input-to-date"
+            />
           </div>
 
           {(fromDate || toDate) && (
@@ -368,9 +444,20 @@ export default function ExpensesPage() {
                         <Button
                           variant="ghost"
                           size="icon"
+                          className="h-8 w-8 text-slate-500 hover:text-slate-800"
+                          onClick={() => setViewingExpense(expense)}
+                          data-testid={`btn-view-expense-${expense.id}`}
+                          title="View details"
+                        >
+                          <Eye className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
                           className="h-8 w-8"
                           onClick={() => setEditingExpense(expense)}
                           data-testid={`btn-edit-expense-${expense.id}`}
+                          title="Edit"
                         >
                           <Edit2 className="h-4 w-4" />
                         </Button>
@@ -382,6 +469,7 @@ export default function ExpensesPage() {
                             if (confirm("Delete this expense?")) deleteMutation.mutate(expense.id!);
                           }}
                           data-testid={`btn-delete-expense-${expense.id}`}
+                          title="Delete"
                         >
                           <Trash2 className="h-4 w-4" />
                         </Button>
@@ -402,6 +490,18 @@ export default function ExpensesPage() {
             </div>
           </div>
         )}
+
+        {/* View Dialog */}
+        <Dialog open={!!viewingExpense} onOpenChange={(open) => !open && setViewingExpense(null)}>
+          <DialogContent className="max-w-md">
+            <DialogHeader>
+              <DialogTitle>Expense Details</DialogTitle>
+            </DialogHeader>
+            {viewingExpense && (
+              <ExpenseViewDialog expense={viewingExpense} onClose={() => setViewingExpense(null)} />
+            )}
+          </DialogContent>
+        </Dialog>
 
         {/* Edit Dialog */}
         <Dialog open={!!editingExpense} onOpenChange={(open) => !open && setEditingExpense(null)}>

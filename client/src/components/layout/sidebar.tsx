@@ -14,6 +14,7 @@ import {
   LogOut,
   Building2,
   Wallet,
+  BarChart2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/use-auth";
@@ -33,6 +34,7 @@ const navItems = [
   { icon: Database, label: "Masters", href: "/masters" },
   { icon: Building2, label: "Vendor Management", href: "/vendor-management" },
   { icon: Wallet, label: "Expenses", href: "/expenses" },
+  { icon: BarChart2, label: "Analytics", href: "/analytics" },
   { icon: Settings, label: "Settings", href: "/settings" },
 ];
 

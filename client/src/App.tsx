@@ -63,6 +63,7 @@ import JobCardsPage from "@/pages/job-cards";
 import JobDetailsPage from "@/pages/job-details";
 import VendorManagementPage from "@/pages/vendor-management";
 import ExpensesPage from "@/pages/expenses";
+import AnalyticsPage from "@/pages/analytics";
 
 function Router() {
   return (
@@ -105,6 +106,10 @@ function Router() {
 
       <Route path="/expenses">
         <ProtectedRoute component={ExpensesPage} />
+      </Route>
+
+      <Route path="/analytics">
+        <ProtectedRoute component={AnalyticsPage} />
       </Route>
 
       <Route component={NotFound} />

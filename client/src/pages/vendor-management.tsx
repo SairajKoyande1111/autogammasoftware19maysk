@@ -53,6 +53,12 @@ function formatDate(dateStr: string) {
 function formatCurrency(amount: number) {
   return `₹${amount.toLocaleString("en-IN")}`;
 }
+function getPurchaseCost(p: any): number {
+  return (p.items || []).reduce((sum: number, item: any) => sum + (Number(item.unitPrice) || 0), 0);
+}
+function getSellingTotal(p: any): number {
+  return (p.items || []).reduce((sum: number, item: any) => sum + (Number(item.sellingPrice) || 0), 0);
+}
 
 // ─── HSN Combobox ─────────────────────────────────────────────────────────────
 function HsnCombobox({ value, onChange, idx }: { value: string; onChange: (v: string) => void; idx: number }) {
@@ -816,7 +822,7 @@ interface VendorListRowProps {
 
 function VendorListRow({ vendor, purchases, onEdit, onDelete, onAddPurchase, onClick }: VendorListRowProps) {
   const vendorPurchases = purchases.filter(p => p.vendorId === vendor.id);
-  const totalSpend = vendorPurchases.reduce((sum, p) => sum + (p.totalAmount || 0), 0);
+  const totalSpend = vendorPurchases.reduce((sum, p) => sum + getPurchaseCost(p), 0);
   const lastPurchase = vendorPurchases.sort((a, b) => new Date(b.purchaseDate).getTime() - new Date(a.purchaseDate).getTime())[0];
 
   return (
@@ -914,7 +920,7 @@ function VendorDetailView({ vendor, purchases, onBack, onEdit, onDelete, onAddPu
   const vendorPurchases = purchases
     .filter(p => p.vendorId === vendor.id)
     .sort((a, b) => new Date(b.purchaseDate).getTime() - new Date(a.purchaseDate).getTime());
-  const totalSpend = vendorPurchases.reduce((sum, p) => sum + (p.totalAmount || 0), 0);
+  const totalSpend = vendorPurchases.reduce((sum, p) => sum + getPurchaseCost(p), 0);
 
   const totalPages = Math.ceil(vendorPurchases.length / PAGE_SIZE);
   const pagedPurchases = vendorPurchases.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
@@ -1053,11 +1059,11 @@ function VendorDetailView({ vendor, purchases, onBack, onEdit, onDelete, onAddPu
                         <span className="text-sm text-muted-foreground">{p.items.length} item{p.items.length !== 1 ? "s" : ""}</span>
                       </td>
                       <td className="px-4 py-3 text-right font-semibold text-foreground whitespace-nowrap">
-                        {formatCurrency(p.totalAmount)}
+                        {formatCurrency(getPurchaseCost(p))}
                       </td>
                       <td className="px-4 py-3 text-right font-semibold whitespace-nowrap">
-                        {(p as any).sellingTotal > 0
-                          ? <span className="text-foreground">{formatCurrency((p as any).sellingTotal)}</span>
+                        {getSellingTotal(p) > 0
+                          ? <span className="text-foreground">{formatCurrency(getSellingTotal(p))}</span>
                           : <span className="text-muted-foreground/40">—</span>}
                       </td>
                       <td className="px-4 py-3">
@@ -1087,7 +1093,7 @@ function VendorDetailView({ vendor, purchases, onBack, onEdit, onDelete, onAddPu
                     </td>
                     <td className="px-4 py-3 text-right font-bold text-foreground">{formatCurrency(totalSpend)}</td>
                     <td className="px-4 py-3 text-right font-bold text-foreground">
-                      {formatCurrency(vendorPurchases.reduce((s, p) => s + ((p as any).sellingTotal || 0), 0))}
+                      {formatCurrency(vendorPurchases.reduce((s, p) => s + getSellingTotal(p), 0))}
                     </td>
                     <td />
                   </tr>
@@ -1145,11 +1151,11 @@ function VendorDetailView({ vendor, purchases, onBack, onEdit, onDelete, onAddPu
                 </div>
                 <div className="px-4 py-3">
                   <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide mb-1">Purchase Cost</p>
-                  <p className="text-sm font-bold text-foreground">{formatCurrency(viewingPurchase.totalAmount)}</p>
+                  <p className="text-sm font-bold text-foreground">{formatCurrency(getPurchaseCost(viewingPurchase))}</p>
                 </div>
                 <div className="px-4 py-3">
                   <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide mb-1">Selling Total</p>
-                  <p className="text-sm font-bold text-foreground">{formatCurrency((viewingPurchase as any).sellingTotal || 0)}</p>
+                  <p className="text-sm font-bold text-foreground">{formatCurrency(getSellingTotal(viewingPurchase))}</p>
                 </div>
               </div>
 
@@ -1208,11 +1214,11 @@ function VendorDetailView({ vendor, purchases, onBack, onEdit, onDelete, onAddPu
                         {viewingPurchase.items.length} item{viewingPurchase.items.length !== 1 ? "s" : ""}
                       </td>
                       <td className="px-3 py-2.5 text-right text-sm font-bold text-foreground whitespace-nowrap">
-                        {formatCurrency(viewingPurchase.totalAmount)}
+                        {formatCurrency(getPurchaseCost(viewingPurchase))}
                       </td>
                       <td />
                       <td className="px-4 py-2.5 text-right text-sm font-bold text-foreground whitespace-nowrap">
-                        {(viewingPurchase as any).sellingTotal ? formatCurrency((viewingPurchase as any).sellingTotal) : "—"}
+                        {getSellingTotal(viewingPurchase) > 0 ? formatCurrency(getSellingTotal(viewingPurchase)) : "—"}
                       </td>
                     </tr>
                   </tfoot>
@@ -1294,7 +1300,7 @@ export default function VendorManagementPage() {
     },
   });
 
-  const totalSpend = purchases.reduce((sum, p) => sum + (p.totalAmount || 0), 0);
+  const totalSpend = purchases.reduce((sum, p) => sum + getPurchaseCost(p), 0);
   const thisMonth = purchases.filter(p => {
     const d = new Date(p.purchaseDate || p.createdAt || "");
     const now = new Date();
@@ -1314,8 +1320,8 @@ export default function VendorManagementPage() {
     .sort((a, b) => {
       const aPurchases = purchases.filter(p => p.vendorId === a.id);
       const bPurchases = purchases.filter(p => p.vendorId === b.id);
-      const aSpend = aPurchases.reduce((s, p) => s + (p.totalAmount || 0), 0);
-      const bSpend = bPurchases.reduce((s, p) => s + (p.totalAmount || 0), 0);
+      const aSpend = aPurchases.reduce((s, p) => s + getPurchaseCost(p), 0);
+      const bSpend = bPurchases.reduce((s, p) => s + getPurchaseCost(p), 0);
       switch (vendorSort) {
         case "name-asc": return a.name.localeCompare(b.name);
         case "name-desc": return b.name.localeCompare(a.name);
@@ -1338,14 +1344,14 @@ export default function VendorManagementPage() {
       switch (purchaseSort) {
         case "date-desc": return new Date(b.purchaseDate).getTime() - new Date(a.purchaseDate).getTime();
         case "date-asc": return new Date(a.purchaseDate).getTime() - new Date(b.purchaseDate).getTime();
-        case "amount-desc": return (b.totalAmount || 0) - (a.totalAmount || 0);
-        case "amount-asc": return (a.totalAmount || 0) - (b.totalAmount || 0);
+        case "amount-desc": return getPurchaseCost(b) - getPurchaseCost(a);
+        case "amount-asc": return getPurchaseCost(a) - getPurchaseCost(b);
         case "vendor-asc": return (a.vendorName || "").localeCompare(b.vendorName || "");
         default: return 0;
       }
     });
 
-  const filteredTotal = filteredPurchases.reduce((sum, p) => sum + (p.totalAmount || 0), 0);
+  const filteredTotal = filteredPurchases.reduce((sum, p) => sum + getPurchaseCost(p), 0);
   const uniqueVendors = vendors.filter((v, i, arr) => arr.findIndex(x => x.id === v.id) === i);
 
   // ── Full-screen Purchase Panel ───────────────────────────────────────────
@@ -1590,7 +1596,7 @@ export default function VendorManagementPage() {
                         <div className="flex items-center gap-2">
                           <div className="text-right">
                             <p className="text-[10px] text-muted-foreground">Cost / Sell</p>
-                            <p className="text-xs text-muted-foreground">{formatCurrency(p.totalAmount)} <span className="text-emerald-600 font-bold">/ {formatCurrency((p as any).sellingTotal || 0)}</span></p>
+                            <p className="text-xs text-muted-foreground">{formatCurrency(getPurchaseCost(p))} <span className="text-emerald-600 font-bold">/ {formatCurrency(getSellingTotal(p))}</span></p>
                           </div>
                           {vendor && (
                             <Button data-testid={`button-edit-purchase-tab-${p.id}`} size="icon" variant="ghost" className="h-7 w-7"
@@ -1635,7 +1641,7 @@ export default function VendorManagementPage() {
                     </div>
                     <div className="text-right">
                       <p className="text-[10px] text-muted-foreground">Selling Total</p>
-                      <p className="text-sm font-bold text-emerald-600">{formatCurrency(filteredPurchases.reduce((sum, p) => sum + ((p as any).sellingTotal || 0), 0))}</p>
+                      <p className="text-sm font-bold text-emerald-600">{formatCurrency(filteredPurchases.reduce((sum, p) => sum + getSellingTotal(p), 0))}</p>
                     </div>
                   </div>
                 </div>
@@ -1675,8 +1681,8 @@ export default function VendorManagementPage() {
                           </td>
                           <td className="px-4 py-3 text-muted-foreground">{p.receivedDate ? formatDate(p.receivedDate) : "—"}</td>
                           <td className="px-4 py-3 text-right">
-                            <p className="text-sm text-muted-foreground">{formatCurrency(p.totalAmount)}</p>
-                            <p className="text-sm font-bold text-emerald-600">{formatCurrency((p as any).sellingTotal || 0)}</p>
+                            <p className="text-sm text-muted-foreground">{formatCurrency(getPurchaseCost(p))}</p>
+                            <p className="text-sm font-bold text-emerald-600">{formatCurrency(getSellingTotal(p))}</p>
                           </td>
                           <td className="px-4 py-3">
                             <div className="flex items-center justify-end gap-1">
@@ -1704,7 +1710,7 @@ export default function VendorManagementPage() {
                       </td>
                       <td colSpan={2} className="px-4 py-3 text-right">
                         <p className="text-sm text-muted-foreground">Cost: {formatCurrency(filteredTotal)}</p>
-                        <p className="text-sm font-bold text-emerald-600">Sell: {formatCurrency(filteredPurchases.reduce((sum, p) => sum + ((p as any).sellingTotal || 0), 0))}</p>
+                        <p className="text-sm font-bold text-emerald-600">Sell: {formatCurrency(filteredPurchases.reduce((sum, p) => sum + getSellingTotal(p), 0))}</p>
                       </td>
                     </tr>
                   </tfoot>

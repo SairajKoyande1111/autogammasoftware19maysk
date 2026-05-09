@@ -211,12 +211,12 @@ function ExpenseForm({ onClose, initialData }: { onClose: () => void; initialDat
         </div>
         <div className="space-y-1.5">
           <Label>Mode of Payment</Label>
-          <Select value={paymentMode} onValueChange={setPaymentMode}>
+          <Select value={paymentMode || "__none__"} onValueChange={v => setPaymentMode(v === "__none__" ? "" : v)}>
             <SelectTrigger data-testid="select-payment-mode" className="h-9">
               <SelectValue placeholder="Select account" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="">— None —</SelectItem>
+              <SelectItem value="__none__">— None —</SelectItem>
               {PAYMENT_MODES.map(m => (
                 <SelectItem key={m} value={m}>{m}</SelectItem>
               ))}
@@ -419,13 +419,13 @@ export default function ExpensesPage() {
             <DatePickerButton value={toDate} onChange={setToDate} placeholder="End date" testId="input-to-date" />
           </div>
 
-          <Select value={filterMode} onValueChange={setFilterMode}>
+          <Select value={filterMode || "__all__"} onValueChange={v => setFilterMode(v === "__all__" ? "" : v)}>
             <SelectTrigger className="h-9 w-44" data-testid="filter-payment-mode">
               <CreditCard className="h-3.5 w-3.5 text-slate-400 mr-1 shrink-0" />
               <SelectValue placeholder="All Accounts" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="">All Accounts</SelectItem>
+              <SelectItem value="__all__">All Accounts</SelectItem>
               {PAYMENT_MODES.map(m => <SelectItem key={m} value={m}>{m}</SelectItem>)}
             </SelectContent>
           </Select>

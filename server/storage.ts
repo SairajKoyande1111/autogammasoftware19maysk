@@ -444,6 +444,14 @@ export interface IStorage {
   updateVendorPurchase(id: string, purchase: Partial<InsertVendorPurchase>): Promise<VendorPurchase | undefined>;
   deleteVendorPurchase(id: string): Promise<boolean>;
 
+  // Warranty
+  getWarrantyItems(): Promise<any[]>;
+  getWarrantyFollowUps(): Promise<WarrantyFollowUp[]>;
+  getWarrantyFollowUp(id: string): Promise<WarrantyFollowUp | undefined>;
+  createWarrantyFollowUp(data: InsertWarrantyFollowUp): Promise<WarrantyFollowUp>;
+  updateWarrantyFollowUp(id: string, data: Partial<InsertWarrantyFollowUp>): Promise<WarrantyFollowUp | undefined>;
+  deleteWarrantyFollowUp(id: string): Promise<boolean>;
+
   sessionStore: session.Store;
 }
 
@@ -2453,24 +2461,26 @@ export class MongoStorage implements IStorage {
   }
 
   // ── Warranty Follow-ups ──────────────────────────────────────────────────────
-  async getWarrantyItems() {
-    const invoices = await InvoiceModel.find().sort({ date: -1 });
+  async getWarrantyItems(): Promise<any[]> {
+    const invoices = await InvoiceModel.find().lean().sort({ date: -1 });
     const items: any[] = [];
-    for (const inv of invoices) {
-      for (const item of (inv.items || []) as any[]) {
-        if (item.warranty && item.type !== "Accessory" && item.type !== "Labor") {
+    for (const inv of invoices as any[]) {
+      const invItems: any[] = inv.items || [];
+      for (const item of invItems) {
+        const w = item.warranty || item.warrantyPeriod || "";
+        if (w && item.type !== "Accessory" && item.type !== "Labor") {
           items.push({
             invoiceId: inv._id.toString(),
-            invoiceNo: (inv as any).invoiceNo,
-            business: (inv as any).business,
-            customerName: (inv as any).customerName,
-            customerPhone: (inv as any).phoneNumber,
-            vehicleInfo: `${(inv as any).vehicleMake || ""} ${(inv as any).vehicleModel || ""} ${(inv as any).vehicleYear || ""}`.trim(),
-            licensePlate: (inv as any).licensePlate || "",
-            invoiceDate: (inv as any).date,
-            itemName: item.name,
-            itemType: item.type,
-            warrantyPeriod: item.warranty,
+            invoiceNo: inv.invoiceNo || "",
+            business: inv.business || "",
+            customerName: inv.customerName || "",
+            customerPhone: inv.phoneNumber || "",
+            vehicleInfo: `${inv.vehicleMake || ""} ${inv.vehicleModel || ""} ${inv.vehicleYear || ""}`.trim(),
+            licensePlate: inv.licensePlate || "",
+            invoiceDate: inv.date || "",
+            itemName: item.name || "",
+            itemType: item.type || "PPF",
+            warrantyPeriod: w,
           });
         }
       }

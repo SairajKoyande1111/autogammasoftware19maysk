@@ -115,8 +115,9 @@ const expenseMongoSchema = new mongoose.Schema({
 export const ExpenseModel = mongoose.model("Expense", expenseMongoSchema);
 
 const warrantyFollowUpMongoSchema = new mongoose.Schema({
-  jobCardId: { type: String, required: true },
-  jobNo: { type: String, required: true },
+  invoiceId: { type: String, default: "" },
+  jobCardId: { type: String, default: "" },
+  jobNo: { type: String, default: "" },
   customerName: { type: String, required: true },
   customerPhone: { type: String, required: true },
   vehicleInfo: { type: String, required: true },
@@ -2452,6 +2453,31 @@ export class MongoStorage implements IStorage {
   }
 
   // ── Warranty Follow-ups ──────────────────────────────────────────────────────
+  async getWarrantyItems() {
+    const invoices = await InvoiceModel.find().sort({ date: -1 });
+    const items: any[] = [];
+    for (const inv of invoices) {
+      for (const item of (inv.items || []) as any[]) {
+        if (item.warranty && item.type !== "Accessory" && item.type !== "Labor") {
+          items.push({
+            invoiceId: inv._id.toString(),
+            invoiceNo: (inv as any).invoiceNo,
+            business: (inv as any).business,
+            customerName: (inv as any).customerName,
+            customerPhone: (inv as any).phoneNumber,
+            vehicleInfo: `${(inv as any).vehicleMake || ""} ${(inv as any).vehicleModel || ""} ${(inv as any).vehicleYear || ""}`.trim(),
+            licensePlate: (inv as any).licensePlate || "",
+            invoiceDate: (inv as any).date,
+            itemName: item.name,
+            itemType: item.type,
+            warrantyPeriod: item.warranty,
+          });
+        }
+      }
+    }
+    return items;
+  }
+
   async getWarrantyFollowUps(): Promise<WarrantyFollowUp[]> {
     const docs = await WarrantyFollowUpModel.find().sort({ createdAt: -1 });
     return docs.map(d => ({ ...d.toObject(), id: d._id.toString() }) as WarrantyFollowUp);

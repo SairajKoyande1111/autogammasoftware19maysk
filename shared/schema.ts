@@ -441,8 +441,9 @@ export type InsertVendorPurchase = z.infer<typeof insertVendorPurchaseSchema>;
 // Warranty Follow-up Schemas
 export const warrantyFollowUpSchema = z.object({
   id: z.string().optional(),
-  jobCardId: z.string().min(1),
-  jobNo: z.string(),
+  invoiceId: z.string().optional().default(""),
+  jobCardId: z.string().default(""),
+  jobNo: z.string().default(""),
   customerName: z.string(),
   customerPhone: z.string(),
   vehicleInfo: z.string(),

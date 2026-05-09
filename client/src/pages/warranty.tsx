@@ -2,9 +2,9 @@ import { Layout } from "@/components/layout/layout";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import { WarrantyFollowUp, JobCard } from "@shared/schema";
+import { WarrantyFollowUp } from "@shared/schema";
 import { useState, useMemo } from "react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -22,81 +22,51 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Calendar } from "@/components/ui/calendar";
 import {
   Shield,
-  Plus,
   CheckCircle2,
   Clock,
   AlertCircle,
   Search,
-  Trash2,
-  X,
   CalendarIcon,
-  Car,
-  Wrench,
-  ChevronDown,
-  ChevronUp,
+  ChevronRight,
 } from "lucide-react";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Calendar } from "@/components/ui/calendar";
 import { format, parseISO, addMonths, differenceInDays } from "date-fns";
+
+// ─── Types ──────────────────────────────────────────────────────────────────
+
+interface WarrantyItem {
+  invoiceId: string;
+  invoiceNo: string;
+  business: string;
+  customerName: string;
+  customerPhone: string;
+  vehicleInfo: string;
+  licensePlate: string;
+  invoiceDate: string;
+  itemName: string;
+  itemType: "Service" | "PPF";
+  warrantyPeriod: string;
+}
+
+type Urgency = "overdue" | "soon" | "upcoming" | "future" | "done";
+
+// ─── Helpers ─────────────────────────────────────────────────────────────────
 
 function todayStr() {
   return format(new Date(), "yyyy-MM-dd");
 }
 
-function fmtDate(dateStr?: string) {
-  if (!dateStr) return "—";
-  try { return format(parseISO(dateStr), "dd MMM yyyy"); } catch { return dateStr; }
+function fmtDate(d?: string) {
+  if (!d) return "—";
+  try { return format(parseISO(d), "dd MMM yyyy"); } catch { return d; }
 }
 
-function DatePickerButton({
-  value,
-  onChange,
-  placeholder = "Pick date",
-  testId,
-}: {
-  value: string;
-  onChange: (val: string) => void;
-  placeholder?: string;
-  testId?: string;
-}) {
-  const [open, setOpen] = useState(false);
-  const selected = value ? new Date(value + "T00:00:00") : undefined;
-  return (
-    <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger asChild>
-        <Button variant="outline" data-testid={testId}
-          className="h-9 w-full justify-start gap-2 text-sm font-normal bg-white hover:bg-slate-50">
-          <CalendarIcon className="h-3.5 w-3.5 text-slate-400 shrink-0" />
-          <span className={value ? "text-slate-900" : "text-slate-400"}>
-            {value ? format(new Date(value + "T00:00:00"), "dd MMM yyyy") : placeholder}
-          </span>
-        </Button>
-      </PopoverTrigger>
-      <PopoverContent className="w-auto p-0" align="start">
-        <Calendar mode="single" selected={selected}
-          onSelect={(date) => { onChange(date ? format(date, "yyyy-MM-dd") : ""); setOpen(false); }}
-          initialFocus />
-      </PopoverContent>
-    </Popover>
-  );
-}
-
-// Parse warranty period string to months
 function warrantyToMonths(period: string): number {
   const lower = period.toLowerCase();
-  const numMatch = lower.match(/(\d+)/);
-  if (!numMatch) return 12;
-  const num = parseInt(numMatch[1]);
+  const num = parseInt(lower.match(/(\d+)/)?.[1] || "12");
   if (lower.includes("year")) return num * 12;
   if (lower.includes("month")) return num;
   return 12;
@@ -106,17 +76,19 @@ function getCheckupWindow(serviceDate: string, warrantyPeriod: string) {
   try {
     const months = warrantyToMonths(warrantyPeriod);
     const start = parseISO(serviceDate);
-    const windowStart = addMonths(start, Math.floor(months * 0.65));
-    const windowEnd = addMonths(start, Math.floor(months * 0.95));
-    return { windowStart, windowEnd };
-  } catch {
-    return null;
-  }
+    return {
+      windowStart: addMonths(start, Math.floor(months * 0.65)),
+      windowEnd: addMonths(start, Math.floor(months * 0.95)),
+      expiryDate: addMonths(start, months),
+    };
+  } catch { return null; }
 }
 
-function getCheckupUrgency(fw: WarrantyFollowUp): "overdue" | "soon" | "upcoming" | "future" | "done" {
-  if (fw.checkupStatus === "done") return "done";
-  const win = getCheckupWindow(fw.serviceDate, fw.warrantyPeriod);
+function getUrgency(serviceDate: string, warrantyPeriod: string, followUp?: WarrantyFollowUp): Urgency {
+  const bothDone = followUp?.checkupStatus === "done" &&
+    (followUp?.topupStatus === "done" || followUp?.topupStatus === "not_applicable");
+  if (bothDone) return "done";
+  const win = getCheckupWindow(serviceDate, warrantyPeriod);
   if (!win) return "upcoming";
   const today = new Date();
   const daysToStart = differenceInDays(win.windowStart, today);
@@ -127,263 +99,114 @@ function getCheckupUrgency(fw: WarrantyFollowUp): "overdue" | "soon" | "upcoming
   return "future";
 }
 
-const URGENCY_CONFIG = {
-  overdue: { label: "Overdue", color: "bg-red-100 text-red-700 border-red-200", icon: AlertCircle, iconColor: "text-red-500" },
-  soon: { label: "Due Now", color: "bg-orange-100 text-orange-700 border-orange-200", icon: Clock, iconColor: "text-orange-500" },
-  upcoming: { label: "Coming Soon", color: "bg-yellow-100 text-yellow-700 border-yellow-200", icon: Clock, iconColor: "text-yellow-500" },
-  future: { label: "Future", color: "bg-slate-100 text-slate-600 border-slate-200", icon: Clock, iconColor: "text-slate-400" },
-  done: { label: "Done", color: "bg-green-100 text-green-700 border-green-200", icon: CheckCircle2, iconColor: "text-green-500" },
+const URGENCY_CFG: Record<Urgency, { label: string; badge: string; icon: any; iconColor: string }> = {
+  overdue: { label: "Overdue", badge: "bg-red-100 text-red-700 border-red-200", icon: AlertCircle, iconColor: "text-red-500" },
+  soon:    { label: "Due Now", badge: "bg-orange-100 text-orange-700 border-orange-200", icon: Clock, iconColor: "text-orange-500" },
+  upcoming:{ label: "Coming Soon", badge: "bg-yellow-100 text-yellow-700 border-yellow-200", icon: Clock, iconColor: "text-yellow-600" },
+  future:  { label: "Future", badge: "bg-slate-100 text-slate-500 border-slate-200", icon: Clock, iconColor: "text-slate-400" },
+  done:    { label: "Completed", badge: "bg-green-100 text-green-700 border-green-200", icon: CheckCircle2, iconColor: "text-green-500" },
 };
 
-const WARRANTY_PERIODS = [
-  "6 Months", "1 Year", "2 Years", "3 Years", "5 Years",
-  "1 Month", "3 Months", "Lifetime",
-];
+const URGENCY_ORDER: Record<Urgency, number> = { overdue: 0, soon: 1, upcoming: 2, future: 3, done: 4 };
 
-function AddFollowUpDialog({ onClose, jobCards }: { onClose: () => void; jobCards: JobCard[] }) {
-  const { toast } = useToast();
-  const [jobCardId, setJobCardId] = useState("");
-  const [serviceName, setServiceName] = useState("");
-  const [serviceType, setServiceType] = useState<"Service" | "PPF">("Service");
-  const [warrantyPeriod, setWarrantyPeriod] = useState("1 Year");
-  const [serviceDate, setServiceDate] = useState(todayStr());
-  const [jobSearch, setJobSearch] = useState("");
-  const [showJobList, setShowJobList] = useState(false);
+// ─── Date Picker ─────────────────────────────────────────────────────────────
 
-  const selectedJob = jobCards.find(j => j.id === jobCardId);
-
-  const filteredJobs = useMemo(() => {
-    const q = jobSearch.toLowerCase();
-    return jobCards
-      .filter(j =>
-        j.customerName.toLowerCase().includes(q) ||
-        j.jobNo.toLowerCase().includes(q) ||
-        j.licensePlate.toLowerCase().includes(q) ||
-        j.make.toLowerCase().includes(q)
-      )
-      .slice(0, 15);
-  }, [jobCards, jobSearch]);
-
-  const serviceItems = useMemo(() => {
-    if (!selectedJob) return [];
-    const services = (selectedJob.services || []).filter(s => s.warranty).map(s => ({ name: s.name, type: "Service" as const }));
-    const ppfs = (selectedJob.ppfs || []).filter(p => (p as any).warranty).map(p => ({ name: p.name, type: "PPF" as const }));
-    return [...services, ...ppfs];
-  }, [selectedJob]);
-
-  const mutation = useMutation({
-    mutationFn: async (data: any) => {
-      const res = await apiRequest("POST", "/api/warranty-followups", data);
-      return res.json();
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/warranty-followups"] });
-      toast({ title: "Warranty follow-up added" });
-      onClose();
-    },
-    onError: (e: any) => {
-      toast({ title: "Error", description: e?.message || "Failed to add", variant: "destructive" });
-    },
-  });
-
-  const handleSave = () => {
-    if (!jobCardId) { toast({ title: "Select a job card", variant: "destructive" }); return; }
-    if (!serviceName.trim()) { toast({ title: "Enter service name", variant: "destructive" }); return; }
-    if (!serviceDate) { toast({ title: "Enter service date", variant: "destructive" }); return; }
-    const job = jobCards.find(j => j.id === jobCardId);
-    mutation.mutate({
-      jobCardId,
-      jobNo: job?.jobNo || "",
-      customerName: job?.customerName || "",
-      customerPhone: job?.phoneNumber || "",
-      vehicleInfo: `${job?.year || ""} ${job?.make || ""} ${job?.model || ""}`.trim(),
-      licensePlate: job?.licensePlate || "",
-      serviceName: serviceName.trim(),
-      serviceType,
-      warrantyPeriod,
-      serviceDate,
-      checkupStatus: "pending",
-      topupStatus: "pending",
-    });
-  };
-
+function DatePickerButton({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const [open, setOpen] = useState(false);
   return (
-    <div className="space-y-4 py-1">
-      {/* Job Card picker */}
-      <div className="space-y-1.5">
-        <Label>Job Card *</Label>
-        <div className="relative">
-          <Input
-            placeholder="Search customer name, job no, plate..."
-            value={selectedJob ? `${selectedJob.jobNo} — ${selectedJob.customerName}` : jobSearch}
-            onChange={(e) => { setJobSearch(e.target.value); setJobCardId(""); setShowJobList(true); }}
-            onFocus={() => setShowJobList(true)}
-            className="pr-8"
-          />
-          {selectedJob && (
-            <button className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700"
-              onClick={() => { setJobCardId(""); setJobSearch(""); setServiceName(""); }}>
-              <X className="h-4 w-4" />
-            </button>
-          )}
-          {showJobList && !selectedJob && (
-            <div className="absolute z-50 w-full mt-1 bg-white border border-slate-200 rounded-md shadow-lg max-h-52 overflow-y-auto">
-              {filteredJobs.length === 0 ? (
-                <div className="p-3 text-sm text-muted-foreground">No jobs found</div>
-              ) : filteredJobs.map(j => (
-                <button key={j.id} className="w-full text-left px-3 py-2 hover:bg-slate-50 border-b last:border-0"
-                  onClick={() => {
-                    setJobCardId(j.id!);
-                    setJobSearch("");
-                    setShowJobList(false);
-                    setServiceDate(j.date ? j.date.slice(0, 10) : todayStr());
-                  }}>
-                  <div className="font-medium text-sm">{j.customerName}</div>
-                  <div className="text-xs text-muted-foreground">{j.jobNo} · {j.make} {j.model} · {j.licensePlate}</div>
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
-        {selectedJob && (
-          <div className="text-xs text-muted-foreground bg-slate-50 rounded p-2 border">
-            <span className="font-semibold">{selectedJob.make} {selectedJob.model}</span> · {selectedJob.licensePlate} · {fmtDate(selectedJob.date?.slice(0, 10))}
-          </div>
-        )}
-      </div>
-
-      {/* Quick pick service from job */}
-      {serviceItems.length > 0 && (
-        <div className="space-y-1.5">
-          <Label>Quick Pick Service with Warranty</Label>
-          <div className="flex flex-wrap gap-2">
-            {serviceItems.map(item => (
-              <button key={item.name + item.type}
-                onClick={() => { setServiceName(item.name); setServiceType(item.type); }}
-                className={`px-2.5 py-1 rounded-full text-xs border transition-all ${
-                  serviceName === item.name
-                    ? "bg-primary text-white border-primary"
-                    : "bg-white border-slate-200 text-slate-700 hover:border-primary"
-                }`}>
-                {item.type === "PPF" ? "🛡️" : "🔧"} {item.name}
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Service name + type */}
-      <div className="grid grid-cols-2 gap-3">
-        <div className="space-y-1.5">
-          <Label>Service / PPF Name *</Label>
-          <Input placeholder="e.g. Borophene Coating" value={serviceName} onChange={e => setServiceName(e.target.value)} />
-        </div>
-        <div className="space-y-1.5">
-          <Label>Type</Label>
-          <Select value={serviceType} onValueChange={(v) => setServiceType(v as "Service" | "PPF")}>
-            <SelectTrigger><SelectValue /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="Service">Service</SelectItem>
-              <SelectItem value="PPF">PPF</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-      </div>
-
-      {/* Warranty period + service date */}
-      <div className="grid grid-cols-2 gap-3">
-        <div className="space-y-1.5">
-          <Label>Warranty Period *</Label>
-          <Select value={warrantyPeriod} onValueChange={setWarrantyPeriod}>
-            <SelectTrigger><SelectValue /></SelectTrigger>
-            <SelectContent>
-              {WARRANTY_PERIODS.map(p => <SelectItem key={p} value={p}>{p}</SelectItem>)}
-            </SelectContent>
-          </Select>
-        </div>
-        <div className="space-y-1.5">
-          <Label>Service Date *</Label>
-          <DatePickerButton value={serviceDate} onChange={setServiceDate} placeholder="Service date" />
-        </div>
-      </div>
-
-      {/* Preview checkup window */}
-      {serviceDate && warrantyPeriod && (
-        <div className="bg-blue-50 border border-blue-100 rounded-md p-3 text-xs">
-          <p className="font-semibold text-blue-700 mb-1">Calculated Checkup Window</p>
-          {(() => {
-            const win = getCheckupWindow(serviceDate, warrantyPeriod);
-            if (!win) return <p className="text-blue-600">—</p>;
-            return (
-              <p className="text-blue-600">
-                {fmtDate(format(win.windowStart, "yyyy-MM-dd"))} → {fmtDate(format(win.windowEnd, "yyyy-MM-dd"))}
-              </p>
-            );
-          })()}
-          <p className="text-blue-500 mt-0.5">Top-up checkup window: 65–95% of warranty period</p>
-        </div>
-      )}
-
-      <div className="flex justify-end gap-3 pt-2 border-t">
-        <Button variant="outline" onClick={onClose}>Cancel</Button>
-        <Button onClick={handleSave} disabled={mutation.isPending}>
-          {mutation.isPending ? "Saving..." : "Add Follow-up"}
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button variant="outline" className="h-9 w-full justify-start gap-2 text-sm font-normal">
+          <CalendarIcon className="h-3.5 w-3.5 text-slate-400" />
+          <span className={value ? "text-slate-900" : "text-slate-400"}>
+            {value ? format(new Date(value + "T00:00:00"), "dd MMM yyyy") : "Pick date"}
+          </span>
         </Button>
-      </div>
-    </div>
+      </PopoverTrigger>
+      <PopoverContent className="w-auto p-0" align="start">
+        <Calendar mode="single"
+          selected={value ? new Date(value + "T00:00:00") : undefined}
+          onSelect={(d) => { onChange(d ? format(d, "yyyy-MM-dd") : ""); setOpen(false); }}
+          initialFocus />
+      </PopoverContent>
+    </Popover>
   );
 }
 
+// ─── Mark Done Dialog ────────────────────────────────────────────────────────
+
 function MarkDoneDialog({
+  item,
   followUp,
   field,
   onClose,
 }: {
-  followUp: WarrantyFollowUp;
+  item: WarrantyItem;
+  followUp?: WarrantyFollowUp;
   field: "checkup" | "topup";
   onClose: () => void;
 }) {
   const { toast } = useToast();
   const [doneDate, setDoneDate] = useState(todayStr());
   const [notes, setNotes] = useState("");
-  const [topupStatus, setTopupStatus] = useState<"done" | "not_applicable">("done");
+  const [topupResult, setTopupResult] = useState<"done" | "not_applicable">("done");
 
   const mutation = useMutation({
-    mutationFn: async (data: any) => {
-      const res = await apiRequest("PATCH", `/api/warranty-followups/${followUp.id}`, data);
-      return res.json();
+    mutationFn: async (patch: any) => {
+      if (followUp?.id) {
+        const res = await apiRequest("PATCH", `/api/warranty-followups/${followUp.id}`, patch);
+        return res.json();
+      } else {
+        const newRecord = {
+          invoiceId: item.invoiceId,
+          jobCardId: "",
+          jobNo: item.invoiceNo,
+          customerName: item.customerName,
+          customerPhone: item.customerPhone,
+          vehicleInfo: item.vehicleInfo,
+          licensePlate: item.licensePlate,
+          serviceName: item.itemName,
+          serviceType: item.itemType,
+          warrantyPeriod: item.warrantyPeriod,
+          serviceDate: item.invoiceDate,
+          ...patch,
+        };
+        const res = await apiRequest("POST", "/api/warranty-followups", newRecord);
+        return res.json();
+      }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/warranty-followups"] });
-      toast({ title: field === "checkup" ? "Checkup marked done" : "Top-up marked done" });
+      toast({ title: field === "checkup" ? "Checkup marked done ✓" : "Top-up marked done ✓" });
       onClose();
     },
-    onError: () => toast({ title: "Failed to update", variant: "destructive" }),
+    onError: () => toast({ title: "Failed to save", variant: "destructive" }),
   });
 
   const handleSave = () => {
     if (field === "checkup") {
       mutation.mutate({ checkupStatus: "done", checkupDate: doneDate, checkupNotes: notes });
     } else {
-      mutation.mutate({ topupStatus, topupDate: doneDate, topupNotes: notes });
+      mutation.mutate({ topupStatus: topupResult, topupDate: doneDate, topupNotes: notes });
     }
   };
 
   return (
     <div className="space-y-4 py-1">
-      <div className="bg-slate-50 border rounded-md p-3 text-sm">
-        <p className="font-semibold text-slate-800">{followUp.customerName}</p>
-        <p className="text-muted-foreground text-xs">{followUp.vehicleInfo} · {followUp.serviceName}</p>
+      <div className="bg-slate-50 border rounded-md p-3 text-sm space-y-0.5">
+        <p className="font-semibold text-slate-800">{item.customerName}</p>
+        <p className="text-xs text-muted-foreground">{item.vehicleInfo} · {item.licensePlate}</p>
+        <p className="text-xs text-primary font-medium">{item.itemName} — {item.warrantyPeriod}</p>
       </div>
 
       {field === "topup" && (
         <div className="space-y-1.5">
           <Label>Top-up Result</Label>
-          <Select value={topupStatus} onValueChange={(v) => setTopupStatus(v as "done" | "not_applicable")}>
+          <Select value={topupResult} onValueChange={(v) => setTopupResult(v as "done" | "not_applicable")}>
             <SelectTrigger><SelectValue /></SelectTrigger>
             <SelectContent>
               <SelectItem value="done">Top-up Done ✓</SelectItem>
-              <SelectItem value="not_applicable">Not Applicable (no top-up needed)</SelectItem>
+              <SelectItem value="not_applicable">Not Required</SelectItem>
             </SelectContent>
           </Select>
         </div>
@@ -391,11 +214,11 @@ function MarkDoneDialog({
 
       <div className="space-y-1.5">
         <Label>{field === "checkup" ? "Checkup Date" : "Date"}</Label>
-        <DatePickerButton value={doneDate} onChange={setDoneDate} placeholder="Select date" />
+        <DatePickerButton value={doneDate} onChange={setDoneDate} />
       </div>
       <div className="space-y-1.5">
-        <Label>Notes (optional)</Label>
-        <Input placeholder="Any observations..." value={notes} onChange={e => setNotes(e.target.value)} />
+        <Label>Notes <span className="text-muted-foreground text-xs">(optional)</span></Label>
+        <Input placeholder="Any observations or remarks..." value={notes} onChange={e => setNotes(e.target.value)} />
       </div>
       <div className="flex justify-end gap-3 pt-2 border-t">
         <Button variant="outline" onClick={onClose}>Cancel</Button>
@@ -407,215 +230,256 @@ function MarkDoneDialog({
   );
 }
 
-function FollowUpRow({ fw, onMarkCheckup, onMarkTopup, onDelete }: {
-  fw: WarrantyFollowUp;
+// ─── Row Component ────────────────────────────────────────────────────────────
+
+function WarrantyRow({
+  item,
+  followUp,
+  onMarkCheckup,
+  onMarkTopup,
+}: {
+  item: WarrantyItem;
+  followUp?: WarrantyFollowUp;
   onMarkCheckup: () => void;
   onMarkTopup: () => void;
-  onDelete: () => void;
 }) {
-  const urgency = getCheckupUrgency(fw);
-  const cfg = URGENCY_CONFIG[urgency];
-  const UrgencyIcon = cfg.icon;
-  const win = getCheckupWindow(fw.serviceDate, fw.warrantyPeriod);
+  const urgency = getUrgency(item.invoiceDate, item.warrantyPeriod, followUp);
+  const cfg = URGENCY_CFG[urgency];
+  const Icon = cfg.icon;
+  const win = getCheckupWindow(item.invoiceDate, item.warrantyPeriod);
+  const checkupDone = followUp?.checkupStatus === "done";
+  const topupDone = followUp?.topupStatus === "done" || followUp?.topupStatus === "not_applicable";
 
   return (
-    <TableRow className="hover:bg-slate-50/60">
-      <TableCell>
-        <div className="font-semibold text-slate-800 text-sm">{fw.customerName}</div>
-        <div className="text-xs text-muted-foreground">{fw.customerPhone}</div>
-      </TableCell>
-      <TableCell>
-        <div className="text-sm font-medium text-slate-700">{fw.vehicleInfo}</div>
-        <div className="text-xs text-muted-foreground uppercase tracking-wide">{fw.licensePlate}</div>
-      </TableCell>
-      <TableCell>
-        <div className="text-sm font-medium">{fw.serviceName}</div>
-        <Badge variant="outline" className={`text-[10px] mt-0.5 ${fw.serviceType === "PPF" ? "text-purple-700 bg-purple-50 border-purple-200" : "text-blue-700 bg-blue-50 border-blue-200"}`}>
-          {fw.serviceType}
-        </Badge>
-      </TableCell>
-      <TableCell>
-        <div className="text-xs font-semibold text-slate-700">{fw.warrantyPeriod}</div>
-        <div className="text-[11px] text-muted-foreground">From {fmtDate(fw.serviceDate)}</div>
-      </TableCell>
-      <TableCell>
-        <div className="text-[11px] text-slate-500">
-          {win ? `${fmtDate(format(win.windowStart, "yyyy-MM-dd"))} →` : "—"}
-          {win ? <br /> : ""}
-          {win ? fmtDate(format(win.windowEnd, "yyyy-MM-dd")) : ""}
+    <div className="border rounded-lg bg-white hover:bg-slate-50/60 transition-colors p-4">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+
+        {/* Left: customer + vehicle + service */}
+        <div className="flex-1 min-w-0 space-y-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="font-semibold text-slate-900">{item.customerName}</span>
+            <span className="text-xs text-muted-foreground">{item.customerPhone}</span>
+            <Badge variant="outline" className="text-[10px] bg-slate-50">{item.invoiceNo}</Badge>
+          </div>
+          <div className="text-sm text-slate-600">{item.vehicleInfo} <span className="text-xs text-muted-foreground uppercase tracking-wide ml-1">{item.licensePlate}</span></div>
+          <div className="flex flex-wrap items-center gap-1.5 mt-0.5">
+            <span className="text-sm font-medium text-slate-800 leading-tight">{item.itemName}</span>
+            <Badge variant="outline" className={`text-[10px] shrink-0 ${item.itemType === "PPF" ? "text-purple-700 bg-purple-50 border-purple-200" : "text-blue-700 bg-blue-50 border-blue-200"}`}>
+              {item.itemType}
+            </Badge>
+            <Badge variant="outline" className="text-[10px] bg-emerald-50 text-emerald-700 border-emerald-200 shrink-0">
+              {item.warrantyPeriod}
+            </Badge>
+          </div>
         </div>
-      </TableCell>
-      <TableCell>
-        <div className="space-y-1">
+
+        {/* Middle: dates */}
+        <div className="flex gap-6 sm:gap-8 shrink-0 text-xs">
+          <div>
+            <p className="text-muted-foreground mb-0.5">Service Date</p>
+            <p className="font-medium text-slate-700">{fmtDate(item.invoiceDate)}</p>
+          </div>
+          <div>
+            <p className="text-muted-foreground mb-0.5">Checkup Window</p>
+            {win ? (
+              <p className="font-medium text-slate-700">{fmtDate(format(win.windowStart, "yyyy-MM-dd"))} <ChevronRight className="inline h-3 w-3" /> {fmtDate(format(win.windowEnd, "yyyy-MM-dd"))}</p>
+            ) : <p className="text-slate-400">—</p>}
+          </div>
+          <div>
+            <p className="text-muted-foreground mb-0.5">Expires</p>
+            <p className="font-medium text-slate-700">{win ? fmtDate(format(win.expiryDate, "yyyy-MM-dd")) : "—"}</p>
+          </div>
+        </div>
+
+        {/* Right: status + actions */}
+        <div className="flex flex-col gap-2 shrink-0 min-w-[180px]">
+          {/* Urgency badge */}
+          <Badge variant="outline" className={`self-start text-[11px] font-medium ${cfg.badge}`}>
+            <Icon className={`h-3 w-3 mr-1 ${cfg.iconColor}`} />
+            {cfg.label}
+          </Badge>
+
           {/* Checkup status */}
-          {fw.checkupStatus === "done" ? (
-            <div className="flex items-center gap-1.5">
+          {checkupDone ? (
+            <div className="flex items-center gap-1.5 text-xs text-green-700">
               <CheckCircle2 className="h-3.5 w-3.5 text-green-500 shrink-0" />
-              <span className="text-xs text-green-700 font-medium">Checkup done {fw.checkupDate ? `(${fmtDate(fw.checkupDate)})` : ""}</span>
+              <span>Checkup done {followUp?.checkupDate ? `(${fmtDate(followUp.checkupDate)})` : ""}</span>
             </div>
           ) : (
-            <div className="flex items-center gap-1.5">
-              <Badge variant="outline" className={`text-[10px] ${cfg.color}`}>
-                <UrgencyIcon className={`h-3 w-3 mr-1 ${cfg.iconColor}`} />
-                Checkup {cfg.label}
-              </Badge>
-              <button onClick={onMarkCheckup} className="text-[11px] text-primary hover:underline font-medium">Mark Done</button>
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-slate-500">Checkup pending</span>
+              <button
+                onClick={onMarkCheckup}
+                className="text-[11px] font-semibold text-primary hover:underline"
+                data-testid="btn-mark-checkup-done"
+              >
+                ✓ Mark Done
+              </button>
             </div>
           )}
+
           {/* Top-up status */}
-          {fw.topupStatus === "done" ? (
-            <div className="flex items-center gap-1.5">
-              <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500 shrink-0" />
-              <span className="text-xs text-emerald-700 font-medium">Top-up done {fw.topupDate ? `(${fmtDate(fw.topupDate)})` : ""}</span>
-            </div>
-          ) : fw.topupStatus === "not_applicable" ? (
-            <div className="flex items-center gap-1.5">
-              <X className="h-3.5 w-3.5 text-slate-400" />
-              <span className="text-xs text-slate-500">Top-up N/A</span>
-            </div>
-          ) : fw.checkupStatus === "done" ? (
-            <div className="flex items-center gap-1.5">
-              <Badge variant="outline" className="text-[10px] bg-slate-100 text-slate-600">Top-up Pending</Badge>
-              <button onClick={onMarkTopup} className="text-[11px] text-primary hover:underline font-medium">Mark Done</button>
-            </div>
-          ) : (
-            <span className="text-[11px] text-slate-400">Top-up: awaiting checkup</span>
+          {checkupDone && (
+            topupDone ? (
+              <div className="flex items-center gap-1.5 text-xs text-emerald-700">
+                <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500 shrink-0" />
+                <span>
+                  {followUp?.topupStatus === "not_applicable" ? "Top-up not required" : `Top-up done ${followUp?.topupDate ? `(${fmtDate(followUp.topupDate)})` : ""}`}
+                </span>
+              </div>
+            ) : (
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-slate-500">Top-up pending</span>
+                <button
+                  onClick={onMarkTopup}
+                  className="text-[11px] font-semibold text-primary hover:underline"
+                  data-testid="btn-mark-topup-done"
+                >
+                  ✓ Mark Done
+                </button>
+              </div>
+            )
           )}
         </div>
-      </TableCell>
-      <TableCell>
-        <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-400 hover:text-destructive" onClick={onDelete}>
-          <Trash2 className="h-4 w-4" />
-        </Button>
-      </TableCell>
-    </TableRow>
+      </div>
+    </div>
   );
 }
 
+// ─── Main Page ────────────────────────────────────────────────────────────────
+
 export default function WarrantyPage() {
-  const { toast } = useToast();
-  const [isAddOpen, setIsAddOpen] = useState(false);
-  const [markingItem, setMarkingItem] = useState<{ fw: WarrantyFollowUp; field: "checkup" | "topup" } | null>(null);
   const [search, setSearch] = useState("");
   const [filterStatus, setFilterStatus] = useState("all");
+  const [markingState, setMarkingState] = useState<{
+    item: WarrantyItem;
+    followUp?: WarrantyFollowUp;
+    field: "checkup" | "topup";
+  } | null>(null);
 
-  const { data: followUps = [], isLoading } = useQuery<WarrantyFollowUp[]>({
+  const { data: warrantyItems = [], isLoading } = useQuery<WarrantyItem[]>({
+    queryKey: ["/api/warranty-items"],
+  });
+
+  const { data: followUps = [] } = useQuery<WarrantyFollowUp[]>({
     queryKey: ["/api/warranty-followups"],
   });
 
-  const { data: jobCards = [] } = useQuery<JobCard[]>({
-    queryKey: ["/api/job-cards"],
-  });
-
-  const deleteMutation = useMutation({
-    mutationFn: async (id: string) => {
-      const res = await apiRequest("DELETE", `/api/warranty-followups/${id}`);
-      return res.json();
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/warranty-followups"] });
-      toast({ title: "Follow-up deleted" });
-    },
-    onError: () => toast({ title: "Failed to delete", variant: "destructive" }),
-  });
+  // Find matching follow-up for a warranty item
+  const getFollowUp = (item: WarrantyItem) =>
+    followUps.find(f => f.invoiceId === item.invoiceId && f.serviceName === item.itemName);
 
   const filtered = useMemo(() => {
-    let list = [...followUps];
+    let list = [...warrantyItems];
+
     if (search.trim()) {
       const q = search.toLowerCase();
-      list = list.filter(f =>
-        f.customerName.toLowerCase().includes(q) ||
-        f.serviceName.toLowerCase().includes(q) ||
-        f.vehicleInfo.toLowerCase().includes(q) ||
-        f.licensePlate.toLowerCase().includes(q)
+      list = list.filter(i =>
+        i.customerName.toLowerCase().includes(q) ||
+        i.itemName.toLowerCase().includes(q) ||
+        i.vehicleInfo.toLowerCase().includes(q) ||
+        i.licensePlate.toLowerCase().includes(q) ||
+        i.customerPhone.includes(q) ||
+        i.invoiceNo.toLowerCase().includes(q)
       );
     }
+
     if (filterStatus !== "all") {
-      list = list.filter(f => {
-        const urgency = getCheckupUrgency(f);
+      list = list.filter(i => {
+        const fu = getFollowUp(i);
+        const urgency = getUrgency(i.invoiceDate, i.warrantyPeriod, fu);
         if (filterStatus === "active") return urgency !== "done" && urgency !== "future";
         if (filterStatus === "overdue") return urgency === "overdue";
-        if (filterStatus === "done") return f.checkupStatus === "done" && (f.topupStatus === "done" || f.topupStatus === "not_applicable");
-        if (filterStatus === "pending") return f.checkupStatus === "pending";
+        if (filterStatus === "due") return urgency === "soon";
+        if (filterStatus === "done") return urgency === "done";
         return true;
       });
     }
-    // Sort: overdue first, then soon, then upcoming, then future, then done
-    const order = { overdue: 0, soon: 1, upcoming: 2, future: 3, done: 4 };
-    list.sort((a, b) => (order[getCheckupUrgency(a)] ?? 5) - (order[getCheckupUrgency(b)] ?? 5));
-    return list;
-  }, [followUps, search, filterStatus]);
 
-  // Summary counts
+    list.sort((a, b) => {
+      const fuA = getFollowUp(a);
+      const fuB = getFollowUp(b);
+      return URGENCY_ORDER[getUrgency(a.invoiceDate, a.warrantyPeriod, fuA)] -
+             URGENCY_ORDER[getUrgency(b.invoiceDate, b.warrantyPeriod, fuB)];
+    });
+
+    return list;
+  }, [warrantyItems, followUps, search, filterStatus]);
+
+  // KPI counts
   const counts = useMemo(() => {
-    const overdue = followUps.filter(f => getCheckupUrgency(f) === "overdue").length;
-    const soon = followUps.filter(f => getCheckupUrgency(f) === "soon").length;
-    const upcoming = followUps.filter(f => getCheckupUrgency(f) === "upcoming").length;
-    const done = followUps.filter(f => f.checkupStatus === "done" && (f.topupStatus === "done" || f.topupStatus === "not_applicable")).length;
-    return { overdue, soon, upcoming, done, total: followUps.length };
-  }, [followUps]);
+    const overdue = warrantyItems.filter(i => getUrgency(i.invoiceDate, i.warrantyPeriod, getFollowUp(i)) === "overdue").length;
+    const due = warrantyItems.filter(i => getUrgency(i.invoiceDate, i.warrantyPeriod, getFollowUp(i)) === "soon").length;
+    const upcoming = warrantyItems.filter(i => getUrgency(i.invoiceDate, i.warrantyPeriod, getFollowUp(i)) === "upcoming").length;
+    const done = warrantyItems.filter(i => getUrgency(i.invoiceDate, i.warrantyPeriod, getFollowUp(i)) === "done").length;
+    return { overdue, due, upcoming, done, total: warrantyItems.length };
+  }, [warrantyItems, followUps]);
+
+  const FILTER_TABS = [
+    { key: "all", label: `All (${counts.total})` },
+    { key: "active", label: "Active" },
+    { key: "overdue", label: "Overdue" },
+    { key: "due", label: "Due Now" },
+    { key: "done", label: "Done" },
+  ];
 
   return (
     <Layout>
       <div className="space-y-6">
         {/* Header */}
-        <div className="flex flex-wrap items-center justify-between gap-4">
-          <div>
-            <h1 className="text-2xl font-bold text-slate-900 flex items-center gap-2">
-              <Shield className="h-6 w-6 text-primary" />
-              Warranty Follow-ups
-            </h1>
-            <p className="text-muted-foreground text-sm mt-0.5">Track checkups and top-ups for services with active warranties</p>
-          </div>
-          <Button onClick={() => setIsAddOpen(true)} className="flex items-center gap-2">
-            <Plus className="h-4 w-4" />
-            Add Follow-up
-          </Button>
+        <div>
+          <h1 className="text-2xl font-bold text-slate-900 flex items-center gap-2">
+            <Shield className="h-6 w-6 text-primary" />
+            Warranty Follow-ups
+          </h1>
+          <p className="text-muted-foreground text-sm mt-0.5">
+            All customers with warranty-backed services and PPF — auto-tracked from invoices
+          </p>
         </div>
 
         {/* KPI Cards */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-          <Card className="border-red-100 bg-red-50">
-            <CardContent className="pt-4 pb-4">
-              <div className="flex items-center gap-3">
-                <AlertCircle className="h-8 w-8 text-red-400" />
-                <div>
-                  <p className="text-2xl font-bold text-red-700">{counts.overdue}</p>
-                  <p className="text-xs font-semibold text-red-500 uppercase">Overdue</p>
-                </div>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <Card className="border-red-100">
+            <CardContent className="p-4 flex items-center gap-3">
+              <div className="h-10 w-10 rounded-full bg-red-50 flex items-center justify-center shrink-0">
+                <AlertCircle className="h-5 w-5 text-red-500" />
+              </div>
+              <div>
+                <p className="text-2xl font-bold text-red-600">{counts.overdue}</p>
+                <p className="text-xs text-muted-foreground uppercase tracking-wide">Overdue</p>
               </div>
             </CardContent>
           </Card>
-          <Card className="border-orange-100 bg-orange-50">
-            <CardContent className="pt-4 pb-4">
-              <div className="flex items-center gap-3">
-                <Clock className="h-8 w-8 text-orange-400" />
-                <div>
-                  <p className="text-2xl font-bold text-orange-700">{counts.soon}</p>
-                  <p className="text-xs font-semibold text-orange-500 uppercase">Due Now</p>
-                </div>
+          <Card className="border-orange-100">
+            <CardContent className="p-4 flex items-center gap-3">
+              <div className="h-10 w-10 rounded-full bg-orange-50 flex items-center justify-center shrink-0">
+                <Clock className="h-5 w-5 text-orange-500" />
+              </div>
+              <div>
+                <p className="text-2xl font-bold text-orange-600">{counts.due}</p>
+                <p className="text-xs text-muted-foreground uppercase tracking-wide">Due Now</p>
               </div>
             </CardContent>
           </Card>
-          <Card className="border-yellow-100 bg-yellow-50">
-            <CardContent className="pt-4 pb-4">
-              <div className="flex items-center gap-3">
-                <Clock className="h-8 w-8 text-yellow-400" />
-                <div>
-                  <p className="text-2xl font-bold text-yellow-700">{counts.upcoming}</p>
-                  <p className="text-xs font-semibold text-yellow-500 uppercase">Coming Soon</p>
-                </div>
+          <Card className="border-yellow-100">
+            <CardContent className="p-4 flex items-center gap-3">
+              <div className="h-10 w-10 rounded-full bg-yellow-50 flex items-center justify-center shrink-0">
+                <Clock className="h-5 w-5 text-yellow-600" />
+              </div>
+              <div>
+                <p className="text-2xl font-bold text-yellow-700">{counts.upcoming}</p>
+                <p className="text-xs text-muted-foreground uppercase tracking-wide">Coming Soon</p>
               </div>
             </CardContent>
           </Card>
-          <Card className="border-green-100 bg-green-50">
-            <CardContent className="pt-4 pb-4">
-              <div className="flex items-center gap-3">
-                <CheckCircle2 className="h-8 w-8 text-green-400" />
-                <div>
-                  <p className="text-2xl font-bold text-green-700">{counts.done}</p>
-                  <p className="text-xs font-semibold text-green-500 uppercase">Completed</p>
-                </div>
+          <Card className="border-green-100">
+            <CardContent className="p-4 flex items-center gap-3">
+              <div className="h-10 w-10 rounded-full bg-green-50 flex items-center justify-center shrink-0">
+                <CheckCircle2 className="h-5 w-5 text-green-500" />
+              </div>
+              <div>
+                <p className="text-2xl font-bold text-green-600">{counts.done}</p>
+                <p className="text-xs text-muted-foreground uppercase tracking-wide">Completed</p>
               </div>
             </CardContent>
           </Card>
@@ -623,102 +487,89 @@ export default function WarrantyPage() {
 
         {/* Filters */}
         <div className="flex flex-wrap items-center gap-3">
-          <div className="relative flex-1 min-w-[220px] max-w-sm">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <div className="relative flex-1 min-w-[200px] max-w-sm">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
             <Input
-              placeholder="Search customer, service, vehicle..."
+              placeholder="Search customer, service, vehicle, plate..."
               value={search}
               onChange={e => setSearch(e.target.value)}
               className="pl-9 h-9"
+              data-testid="input-warranty-search"
             />
-            {search && (
-              <button onClick={() => setSearch("")} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
-                <X className="h-4 w-4" />
-              </button>
-            )}
           </div>
-          <div className="flex items-center gap-1 bg-white border border-slate-200 rounded-lg p-1">
-            {(["all","active","overdue","pending","done"] as const).map(s => (
-              <button key={s} onClick={() => setFilterStatus(s)}
-                className={`px-3 py-1 rounded-md text-xs font-medium transition-all capitalize ${
-                  filterStatus === s ? "bg-primary text-white shadow-sm" : "text-slate-500 hover:text-slate-800"
-                }`}>
-                {s === "all" ? `All (${counts.total})` : s}
+          <div className="flex gap-1 flex-wrap">
+            {FILTER_TABS.map(tab => (
+              <button
+                key={tab.key}
+                onClick={() => setFilterStatus(tab.key)}
+                className={`px-3 py-1.5 rounded-full text-xs font-medium transition-colors border ${
+                  filterStatus === tab.key
+                    ? "bg-primary text-white border-primary"
+                    : "bg-white text-slate-600 border-slate-200 hover:border-primary/40"
+                }`}
+                data-testid={`filter-${tab.key}`}
+              >
+                {tab.label}
               </button>
             ))}
           </div>
         </div>
 
-        {/* Table */}
+        {/* List */}
         {isLoading ? (
-          <div className="text-center py-16 text-muted-foreground">Loading...</div>
+          <div className="space-y-3">
+            {[...Array(4)].map((_, i) => (
+              <div key={i} className="h-24 bg-slate-100 rounded-lg animate-pulse" />
+            ))}
+          </div>
         ) : filtered.length === 0 ? (
-          <div className="flex flex-col items-center py-16 gap-3 text-center">
-            <Shield className="h-12 w-12 text-slate-200" />
-            <p className="text-muted-foreground font-medium">
-              {search || filterStatus !== "all" ? "No results match your filters." : "No warranty follow-ups yet. Click \"Add Follow-up\" to start tracking."}
+          <div className="flex flex-col items-center justify-center py-20 text-center">
+            <Shield className="h-14 w-14 text-slate-200 mb-4" />
+            <p className="text-slate-500 font-medium">
+              {warrantyItems.length === 0
+                ? "No warranty items found. Invoices with PPF or service warranties will appear here automatically."
+                : "No items match your current filter."}
             </p>
           </div>
         ) : (
-          <div className="rounded-md border border-slate-200 overflow-hidden">
-            <Table>
-              <TableHeader>
-                <TableRow className="bg-slate-50">
-                  <TableHead className="font-bold text-slate-700">Customer</TableHead>
-                  <TableHead className="font-bold text-slate-700">Vehicle</TableHead>
-                  <TableHead className="font-bold text-slate-700">Service / PPF</TableHead>
-                  <TableHead className="font-bold text-slate-700">Warranty</TableHead>
-                  <TableHead className="font-bold text-slate-700">Checkup Window</TableHead>
-                  <TableHead className="font-bold text-slate-700">Status & Actions</TableHead>
-                  <TableHead className="font-bold text-slate-700"></TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filtered.map(fw => (
-                  <FollowUpRow
-                    key={fw.id}
-                    fw={fw}
-                    onMarkCheckup={() => setMarkingItem({ fw, field: "checkup" })}
-                    onMarkTopup={() => setMarkingItem({ fw, field: "topup" })}
-                    onDelete={() => { if (confirm("Delete this follow-up?")) deleteMutation.mutate(fw.id!); }}
-                  />
-                ))}
-              </TableBody>
-            </Table>
-            <div className="px-4 py-3 border-t bg-slate-50 text-sm text-muted-foreground">
-              {filtered.length} follow-up{filtered.length !== 1 ? "s" : ""}
-            </div>
+          <div className="space-y-3">
+            {filtered.map((item, idx) => {
+              const fu = getFollowUp(item);
+              return (
+                <WarrantyRow
+                  key={`${item.invoiceId}-${item.itemName}-${idx}`}
+                  item={item}
+                  followUp={fu}
+                  onMarkCheckup={() => setMarkingState({ item, followUp: fu, field: "checkup" })}
+                  onMarkTopup={() => setMarkingState({ item, followUp: fu, field: "topup" })}
+                />
+              );
+            })}
+            <p className="text-xs text-muted-foreground text-center pt-2">
+              Showing {filtered.length} of {warrantyItems.length} warranty items
+            </p>
           </div>
         )}
       </div>
 
-      {/* Add Dialog */}
-      <Dialog open={isAddOpen} onOpenChange={open => !open && setIsAddOpen(false)}>
-        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>Add Warranty Follow-up</DialogTitle>
-          </DialogHeader>
-          <AddFollowUpDialog onClose={() => setIsAddOpen(false)} jobCards={jobCards} />
-        </DialogContent>
-      </Dialog>
-
       {/* Mark Done Dialog */}
-      <Dialog open={!!markingItem} onOpenChange={open => !open && setMarkingItem(null)}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle>
-              {markingItem?.field === "checkup" ? "Mark Checkup Done" : "Mark Top-up Done"}
-            </DialogTitle>
-          </DialogHeader>
-          {markingItem && (
+      {markingState && (
+        <Dialog open onOpenChange={() => setMarkingState(null)}>
+          <DialogContent className="max-w-md">
+            <DialogHeader>
+              <DialogTitle>
+                {markingState.field === "checkup" ? "Mark Checkup Done" : "Mark Top-up Done"}
+              </DialogTitle>
+            </DialogHeader>
             <MarkDoneDialog
-              followUp={markingItem.fw}
-              field={markingItem.field}
-              onClose={() => setMarkingItem(null)}
+              item={markingState.item}
+              followUp={markingState.followUp}
+              field={markingState.field}
+              onClose={() => setMarkingState(null)}
             />
-          )}
-        </DialogContent>
-      </Dialog>
+          </DialogContent>
+        </Dialog>
+      )}
     </Layout>
   );
 }

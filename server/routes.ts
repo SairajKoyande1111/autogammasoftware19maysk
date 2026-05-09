@@ -864,6 +864,17 @@ app.use((req, res, next) => {
     res.json({ message: "Expense deleted" });
   });
 
+  // ── Warranty Items (auto-populated from invoices) ─────────────────────────
+  app.get("/api/warranty-items", async (req, res) => {
+    if (!(req.session as any).userId) return res.sendStatus(401);
+    try {
+      const items = await storage.getWarrantyItems();
+      res.json(items);
+    } catch (e: any) {
+      res.status(500).json({ message: e.message });
+    }
+  });
+
   // ── Warranty Follow-up Routes ─────────────────────────────────────────────
   app.get("/api/warranty-followups", async (req, res) => {
     if (!(req.session as any).userId) return res.sendStatus(401);

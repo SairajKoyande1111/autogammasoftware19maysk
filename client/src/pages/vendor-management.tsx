@@ -715,6 +715,19 @@ function PurchaseForm({ vendorId, vendorName, purchase, onClose }: PurchaseFormP
         toast({ title: "Error", description: "Please add at least one payment record with an amount", variant: "destructive" });
         return;
       }
+      const currentPaidTotal = validPayments.reduce((s, r) => s + (Number(r.amount) || 0), 0);
+      if (currentPaidTotal > total) {
+        toast({ title: "Error", description: "Total paid amount cannot exceed the purchase cost total", variant: "destructive" });
+        return;
+      }
+      if (paymentStatus === "paid" && Math.abs(currentPaidTotal - total) > 0.01) {
+        toast({ title: "Error", description: `For "Paid" status, total paid (${formatCurrency(currentPaidTotal)}) must equal the purchase cost (${formatCurrency(total)})`, variant: "destructive" });
+        return;
+      }
+      if (paymentStatus === "partially_paid" && currentPaidTotal >= total) {
+        toast({ title: "Error", description: `For "Partially Paid", the amount (${formatCurrency(currentPaidTotal)}) must be less than the purchase cost (${formatCurrency(total)}). Use "Paid" instead.`, variant: "destructive" });
+        return;
+      }
     }
     const payload = {
       vendorId,
@@ -854,10 +867,17 @@ function PurchaseForm({ vendorId, vendorName, purchase, onClose }: PurchaseFormP
                   data-testid={`input-payment-amount-${i}`}
                   type="number"
                   min={0}
+                  max={total}
                   placeholder="Amount (₹)"
                   value={record.amount || ""}
-                  onChange={e => updatePaymentRecord(i, "amount", Number(e.target.value))}
-                  className="h-9 text-sm"
+                  onChange={e => {
+                    const entered = Number(e.target.value);
+                    const otherTotal = paymentRecords.reduce((s, r, idx) => idx === i ? s : s + (Number(r.amount) || 0), 0);
+                    const maxAllowed = Math.max(0, total - otherTotal);
+                    const capped = Math.min(entered, maxAllowed);
+                    updatePaymentRecord(i, "amount", capped);
+                  }}
+                  className={`h-9 text-sm ${record.amount > total ? "border-destructive" : ""}`}
                 />
                 <button
                   type="button"
@@ -1332,71 +1352,146 @@ function VendorDetailView({ vendor, purchases, onBack, onEdit, onDelete, onAddPu
                 </div>
               </div>
 
-              {/* Items — clean columnar table */}
-              <div className="rounded-xl border border-border/60 overflow-hidden">
-                <table className="w-full text-sm">
-                  <thead className="bg-muted/40 border-b border-border/40">
-                    <tr>
-                      <th className="text-left px-4 py-2.5 text-[11px] font-semibold text-muted-foreground uppercase tracking-wide whitespace-nowrap">Type</th>
-                      <th className="text-left px-3 py-2.5 text-[11px] font-semibold text-muted-foreground uppercase tracking-wide whitespace-nowrap">Category</th>
-                      <th className="text-left px-3 py-2.5 text-[11px] font-semibold text-muted-foreground uppercase tracking-wide whitespace-nowrap">Item</th>
-                      <th className="text-left px-3 py-2.5 text-[11px] font-semibold text-muted-foreground uppercase tracking-wide whitespace-nowrap">Roll / Batch</th>
-                      <th className="text-left px-3 py-2.5 text-[11px] font-semibold text-muted-foreground uppercase tracking-wide whitespace-nowrap">HSN</th>
-                      <th className="text-right px-3 py-2.5 text-[11px] font-semibold text-muted-foreground uppercase tracking-wide whitespace-nowrap">Qty</th>
-                      <th className="text-right px-3 py-2.5 text-[11px] font-semibold text-muted-foreground uppercase tracking-wide whitespace-nowrap">Unit Price</th>
-                      <th className="text-right px-4 py-2.5 text-[11px] font-semibold text-emerald-600 uppercase tracking-wide whitespace-nowrap">Sell Price</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-border/30">
-                    {viewingPurchase.items.map((item: any, i: number) => (
-                      <tr key={i} className="hover:bg-muted/10 transition-colors">
-                        <td className="px-4 py-3 whitespace-nowrap">
-                          <span className="text-sm font-semibold text-foreground">{item.itemType || "—"}</span>
-                        </td>
-                        <td className="px-3 py-3 whitespace-nowrap">
-                          <span className="text-sm text-foreground">
-                            {item.itemType === "Accessory" && item.categoryName ? item.categoryName : "—"}
-                          </span>
-                        </td>
-                        <td className="px-3 py-3 whitespace-nowrap">
-                          <span className="text-sm font-medium text-foreground">{item.name}</span>
-                        </td>
-                        <td className="px-3 py-3 text-sm text-muted-foreground whitespace-nowrap">
-                          {item.rollName || "—"}
-                        </td>
-                        <td className="px-3 py-3 whitespace-nowrap">
-                          {item.hsnCode
-                            ? <span className="text-sm font-mono text-foreground">{item.hsnCode}</span>
-                            : <span className="text-muted-foreground/40">—</span>}
-                        </td>
-                        <td className="px-3 py-3 text-right text-sm text-foreground whitespace-nowrap">
-                          {item.quantity} {item.unit}
-                        </td>
-                        <td className="px-3 py-3 text-right text-sm font-semibold text-foreground whitespace-nowrap">
-                          {formatCurrency(item.unitPrice || 0)}
-                        </td>
-                        <td className="px-4 py-3 text-right text-sm font-semibold text-emerald-600 whitespace-nowrap">
-                          {item.sellingPrice > 0 ? formatCurrency(item.sellingPrice) : <span className="text-muted-foreground/40">—</span>}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                  <tfoot className="bg-muted/30 border-t border-border/50">
-                    <tr>
-                      <td colSpan={7} className="px-4 py-2.5 text-xs font-medium text-muted-foreground">
-                        {viewingPurchase.items.length} item{viewingPurchase.items.length !== 1 ? "s" : ""}
-                      </td>
-                      <td className="px-3 py-2.5 text-right text-sm font-bold text-foreground whitespace-nowrap">
-                        {formatCurrency(getPurchaseCost(viewingPurchase))}
-                      </td>
-                      <td />
-                      <td className="px-4 py-2.5 text-right text-sm font-bold text-foreground whitespace-nowrap">
-                        {getSellingTotal(viewingPurchase) > 0 ? formatCurrency(getSellingTotal(viewingPurchase)) : "—"}
-                      </td>
-                    </tr>
-                  </tfoot>
-                </table>
-              </div>
+              {/* Items — split by type */}
+              {(() => {
+                const ppfItems = viewingPurchase.items.filter((it: any) => it.itemType !== "Accessory");
+                const accItems = viewingPurchase.items.filter((it: any) => it.itemType === "Accessory");
+                return (
+                  <div className="space-y-4">
+                    {/* PPF Items Table — unchanged layout */}
+                    {ppfItems.length > 0 && (
+                      <div>
+                        <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide mb-2">PPF Items</p>
+                        <div className="rounded-xl border border-border/60 overflow-hidden">
+                          <table className="w-full text-sm">
+                            <thead className="bg-muted/40 border-b border-border/40">
+                              <tr>
+                                <th className="text-left px-4 py-2.5 text-[11px] font-semibold text-muted-foreground uppercase tracking-wide whitespace-nowrap">Item / Brand</th>
+                                <th className="text-left px-3 py-2.5 text-[11px] font-semibold text-muted-foreground uppercase tracking-wide whitespace-nowrap">Roll / Batch</th>
+                                <th className="text-left px-3 py-2.5 text-[11px] font-semibold text-muted-foreground uppercase tracking-wide whitespace-nowrap">HSN</th>
+                                <th className="text-right px-3 py-2.5 text-[11px] font-semibold text-muted-foreground uppercase tracking-wide whitespace-nowrap">Qty</th>
+                                <th className="text-right px-3 py-2.5 text-[11px] font-semibold text-muted-foreground uppercase tracking-wide whitespace-nowrap">Unit Price</th>
+                                <th className="text-right px-4 py-2.5 text-[11px] font-semibold text-emerald-600 uppercase tracking-wide whitespace-nowrap">Sell Price</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-border/30">
+                              {ppfItems.map((item: any, i: number) => (
+                                <tr key={i} className="hover:bg-muted/10 transition-colors">
+                                  <td className="px-4 py-3 whitespace-nowrap">
+                                    <span className="text-sm font-medium text-foreground">{item.name}</span>
+                                  </td>
+                                  <td className="px-3 py-3 text-sm text-muted-foreground whitespace-nowrap">
+                                    {item.rollName || "—"}
+                                  </td>
+                                  <td className="px-3 py-3 whitespace-nowrap">
+                                    {item.hsnCode ? <span className="text-sm font-mono text-foreground">{item.hsnCode}</span> : <span className="text-muted-foreground/40">—</span>}
+                                  </td>
+                                  <td className="px-3 py-3 text-right text-sm text-foreground whitespace-nowrap">
+                                    {item.quantity} {item.unit}
+                                  </td>
+                                  <td className="px-3 py-3 text-right text-sm font-semibold text-foreground whitespace-nowrap">
+                                    {formatCurrency(item.unitPrice || 0)}
+                                  </td>
+                                  <td className="px-4 py-3 text-right text-sm font-semibold text-emerald-600 whitespace-nowrap">
+                                    {(item.sellingPrice || 0) > 0 ? formatCurrency(item.sellingPrice) : <span className="text-muted-foreground/40">—</span>}
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                            <tfoot className="bg-muted/30 border-t border-border/50">
+                              <tr>
+                                <td colSpan={4} className="px-4 py-2.5 text-xs font-medium text-muted-foreground">
+                                  {ppfItems.length} roll{ppfItems.length !== 1 ? "s" : ""}
+                                </td>
+                                <td className="px-3 py-2.5 text-right text-sm font-bold text-foreground whitespace-nowrap">
+                                  {formatCurrency(ppfItems.reduce((s: number, it: any) => s + (Number(it.unitPrice) || 0), 0))}
+                                </td>
+                                <td className="px-4 py-2.5 text-right text-sm font-bold text-emerald-600 whitespace-nowrap">
+                                  {formatCurrency(ppfItems.reduce((s: number, it: any) => s + (Number(it.sellingPrice) || 0), 0))}
+                                </td>
+                              </tr>
+                            </tfoot>
+                          </table>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Accessory Items Table — improved with per-unit + totals */}
+                    {accItems.length > 0 && (
+                      <div>
+                        <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide mb-2">Accessory Items</p>
+                        <div className="rounded-xl border border-border/60 overflow-hidden">
+                          <table className="w-full text-sm">
+                            <thead className="bg-muted/40 border-b border-border/40">
+                              <tr>
+                                <th className="text-left px-4 py-2.5 text-[11px] font-semibold text-muted-foreground uppercase tracking-wide whitespace-nowrap">Category</th>
+                                <th className="text-left px-3 py-2.5 text-[11px] font-semibold text-muted-foreground uppercase tracking-wide whitespace-nowrap">Item</th>
+                                <th className="text-left px-3 py-2.5 text-[11px] font-semibold text-muted-foreground uppercase tracking-wide whitespace-nowrap">HSN</th>
+                                <th className="text-right px-3 py-2.5 text-[11px] font-semibold text-muted-foreground uppercase tracking-wide whitespace-nowrap">Qty</th>
+                                <th className="text-right px-3 py-2.5 text-[11px] font-semibold text-muted-foreground uppercase tracking-wide whitespace-nowrap">Unit Price</th>
+                                <th className="text-right px-3 py-2.5 text-[11px] font-semibold text-muted-foreground uppercase tracking-wide whitespace-nowrap">Cost Total</th>
+                                <th className="text-right px-3 py-2.5 text-[11px] font-semibold text-emerald-600 uppercase tracking-wide whitespace-nowrap">Unit Sell</th>
+                                <th className="text-right px-4 py-2.5 text-[11px] font-semibold text-emerald-600 uppercase tracking-wide whitespace-nowrap">Sell Total</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-border/30">
+                              {accItems.map((item: any, i: number) => {
+                                const qty = Number(item.quantity) || 0;
+                                const unitPrice = Number(item.unitPrice) || 0;
+                                const sellingPrice = Number(item.sellingPrice) || 0;
+                                const costTotal = unitPrice * qty;
+                                const sellTotal = sellingPrice * qty;
+                                return (
+                                  <tr key={i} className="hover:bg-muted/10 transition-colors">
+                                    <td className="px-4 py-3 whitespace-nowrap">
+                                      <span className="text-sm text-muted-foreground">{item.categoryName || "—"}</span>
+                                    </td>
+                                    <td className="px-3 py-3 whitespace-nowrap">
+                                      <span className="text-sm font-medium text-foreground">{item.name}</span>
+                                    </td>
+                                    <td className="px-3 py-3 whitespace-nowrap">
+                                      {item.hsnCode ? <span className="text-sm font-mono text-foreground">{item.hsnCode}</span> : <span className="text-muted-foreground/40">—</span>}
+                                    </td>
+                                    <td className="px-3 py-3 text-right text-sm text-foreground whitespace-nowrap">
+                                      {qty} {item.unit || "pcs"}
+                                    </td>
+                                    <td className="px-3 py-3 text-right text-sm text-foreground whitespace-nowrap">
+                                      {formatCurrency(unitPrice)}
+                                    </td>
+                                    <td className="px-3 py-3 text-right text-sm font-semibold text-foreground whitespace-nowrap">
+                                      {formatCurrency(costTotal)}
+                                    </td>
+                                    <td className="px-3 py-3 text-right text-sm text-emerald-600 whitespace-nowrap">
+                                      {sellingPrice > 0 ? formatCurrency(sellingPrice) : <span className="text-muted-foreground/40">—</span>}
+                                    </td>
+                                    <td className="px-4 py-3 text-right text-sm font-semibold text-emerald-600 whitespace-nowrap">
+                                      {sellTotal > 0 ? formatCurrency(sellTotal) : <span className="text-muted-foreground/40">—</span>}
+                                    </td>
+                                  </tr>
+                                );
+                              })}
+                            </tbody>
+                            <tfoot className="bg-muted/30 border-t border-border/50">
+                              <tr>
+                                <td colSpan={5} className="px-4 py-2.5 text-xs font-medium text-muted-foreground">
+                                  {accItems.length} item{accItems.length !== 1 ? "s" : ""}
+                                </td>
+                                <td className="px-3 py-2.5 text-right text-sm font-bold text-foreground whitespace-nowrap">
+                                  {formatCurrency(accItems.reduce((s: number, it: any) => s + (Number(it.unitPrice) || 0) * (Number(it.quantity) || 0), 0))}
+                                </td>
+                                <td />
+                                <td className="px-4 py-2.5 text-right text-sm font-bold text-emerald-600 whitespace-nowrap">
+                                  {formatCurrency(accItems.reduce((s: number, it: any) => s + (Number(it.sellingPrice) || 0) * (Number(it.quantity) || 0), 0))}
+                                </td>
+                              </tr>
+                            </tfoot>
+                          </table>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
 
               {/* Notes */}
               {viewingPurchase.notes && (

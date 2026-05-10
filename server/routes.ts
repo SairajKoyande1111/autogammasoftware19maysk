@@ -823,7 +823,46 @@ app.use((req, res, next) => {
     }
   });
 
+  async function reverseSyncPurchaseItems(items: any[]) {
+    if (!items || !Array.isArray(items)) return;
+    const [existingPPFs, existingAccessories] = await Promise.all([
+      storage.getPPFs(),
+      storage.getAccessories(),
+    ]);
+
+    for (const item of items) {
+      if (!item.name || !item.name.trim()) continue;
+      const itemName = item.name.trim();
+
+      if (item.itemType === "PPF") {
+        const existingPPF = existingPPFs.find(p => p.name.trim().toLowerCase() === itemName.toLowerCase());
+        if (existingPPF && existingPPF.id) {
+          const rollName = (item.rollName || "").trim();
+          const updatedRolls = rollName
+            ? (existingPPF.rolls || []).filter((r: any) => r.name !== rollName)
+            : (existingPPF.rolls || []).slice(0, -1);
+          await storage.updatePPF(existingPPF.id, { ...existingPPF, rolls: updatedRolls });
+        }
+      } else if (item.itemType === "Accessory") {
+        const catName = (item.categoryName || "").trim();
+        if (!catName) continue;
+        const purchasedQty = Number(item.quantity) || 0;
+        const existing = existingAccessories.find(
+          a => a.category.trim().toLowerCase() === catName.toLowerCase() &&
+               a.name.trim().toLowerCase() === itemName.toLowerCase()
+        );
+        if (existing && existing.id) {
+          const newQty = Math.max(0, (existing.quantity || 0) - purchasedQty);
+          await storage.updateAccessory(existing.id, { quantity: newQty });
+        }
+      }
+    }
+  }
+
   app.delete("/api/vendor-purchases/:id", async (req, res) => {
+    const purchase = await storage.getVendorPurchase(req.params.id);
+    if (!purchase) return res.status(404).json({ message: "Purchase not found" });
+    await reverseSyncPurchaseItems(purchase.items as any[]);
     const success = await storage.deleteVendorPurchase(req.params.id);
     if (!success) return res.status(404).json({ message: "Purchase not found" });
     res.json({ message: "Purchase deleted" });

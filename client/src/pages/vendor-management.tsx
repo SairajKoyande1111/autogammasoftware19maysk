@@ -709,9 +709,12 @@ function PurchaseForm({ vendorId, vendorName, purchase, onClose }: PurchaseFormP
       toast({ title: "Error", description: "Add at least one item", variant: "destructive" });
       return;
     }
-    if (paidTotal > total) {
-      toast({ title: "Error", description: "Total payments cannot exceed purchase cost", variant: "destructive" });
-      return;
+    if (paymentStatus !== "unpaid") {
+      const validPayments = paymentRecords.filter(r => r.amount > 0);
+      if (validPayments.length === 0) {
+        toast({ title: "Error", description: "Please add at least one payment record with an amount", variant: "destructive" });
+        return;
+      }
     }
     const payload = {
       vendorId,
@@ -878,13 +881,8 @@ function PurchaseForm({ vendorId, vendorName, purchase, onClose }: PurchaseFormP
               </Button>
               <div className="text-right text-sm">
                 <span className="text-muted-foreground">Total paid: </span>
-                <span className={`font-bold ${paidTotal > total ? "text-destructive" : "text-foreground"}`}>
-                  {formatCurrency(paidTotal)}
-                </span>
+                <span className="font-bold text-foreground">{formatCurrency(paidTotal)}</span>
                 <span className="text-muted-foreground"> / {formatCurrency(total)}</span>
-                {paidTotal > total && (
-                  <p className="text-xs text-destructive mt-0.5">Exceeds purchase cost</p>
-                )}
               </div>
             </div>
           </div>
@@ -1201,6 +1199,7 @@ function VendorDetailView({ vendor, purchases, onBack, onEdit, onDelete, onAddPu
                     <th className="text-left px-4 py-3 font-medium text-muted-foreground">No. of Items</th>
                     <th className="text-right px-4 py-3 font-medium text-muted-foreground">Purchase Cost</th>
                     <th className="text-right px-4 py-3 font-medium text-muted-foreground">Selling Total</th>
+                    <th className="text-left px-4 py-3 font-medium text-muted-foreground">Payment</th>
                     <th className="px-4 py-3 w-28 text-right font-medium text-muted-foreground">Actions</th>
                   </tr>
                 </thead>
@@ -1220,6 +1219,25 @@ function VendorDetailView({ vendor, purchases, onBack, onEdit, onDelete, onAddPu
                         {getSellingTotal(p) > 0
                           ? <span className="text-foreground">{formatCurrency(getSellingTotal(p))}</span>
                           : <span className="text-muted-foreground/40">—</span>}
+                      </td>
+                      <td className="px-4 py-3">
+                        {(() => {
+                          const ps = (p as any).paymentStatus || "unpaid";
+                          const payments: any[] = (p as any).payments || [];
+                          const paidAmt = payments.reduce((s: number, r: any) => s + (Number(r.amount) || 0), 0);
+                          const methods = [...new Set(payments.filter(r => r.method).map(r => r.method))];
+                          return (
+                            <div className="space-y-0.5">
+                              <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold ${
+                                ps === "paid" ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400"
+                                : ps === "partially_paid" ? "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400"
+                                : "bg-muted text-muted-foreground"}`}>
+                                {ps === "paid" ? "Paid" : ps === "partially_paid" ? "Partially Paid" : "Unpaid"}
+                              </span>
+                              {paidAmt > 0 && <p className="text-xs text-muted-foreground">{formatCurrency(paidAmt)}{methods.length > 0 && ` · ${methods.join(", ")}`}</p>}
+                            </div>
+                          );
+                        })()}
                       </td>
                       <td className="px-4 py-3">
                         <div className="flex items-center justify-end gap-1">
@@ -1250,7 +1268,7 @@ function VendorDetailView({ vendor, purchases, onBack, onEdit, onDelete, onAddPu
                     <td className="px-4 py-3 text-right font-bold text-foreground">
                       {formatCurrency(vendorPurchases.reduce((s, p) => s + getSellingTotal(p), 0))}
                     </td>
-                    <td />
+                    <td colSpan={2} />
                   </tr>
                 </tfoot>
               </table>
@@ -1387,6 +1405,56 @@ function VendorDetailView({ vendor, purchases, onBack, onEdit, onDelete, onAddPu
                   <p className="text-sm text-foreground italic">{viewingPurchase.notes}</p>
                 </div>
               )}
+
+              {/* Payment Details */}
+              {(() => {
+                const ps = (viewingPurchase as any).paymentStatus || "unpaid";
+                const payments: any[] = (viewingPurchase as any).payments || [];
+                const paidAmt = payments.reduce((s: number, r: any) => s + (Number(r.amount) || 0), 0);
+                return (
+                  <div className="space-y-3 pt-1 border-t border-border/40">
+                    <div className="flex items-center gap-3">
+                      <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">Payment Status</p>
+                      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold ${
+                        ps === "paid" ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400"
+                        : ps === "partially_paid" ? "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400"
+                        : "bg-muted text-muted-foreground"}`}>
+                        {ps === "paid" ? "Paid" : ps === "partially_paid" ? "Partially Paid" : "Unpaid"}
+                      </span>
+                    </div>
+                    {payments.length > 0 && (
+                      <div className="rounded-lg border border-border/60 overflow-hidden">
+                        <table className="w-full text-sm">
+                          <thead className="bg-muted/40 border-b border-border/40">
+                            <tr>
+                              <th className="text-left px-4 py-2 text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">#</th>
+                              <th className="text-left px-4 py-2 text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">Method</th>
+                              <th className="text-left px-4 py-2 text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">Date</th>
+                              <th className="text-right px-4 py-2 text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">Amount</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-border/30">
+                            {payments.map((r: any, i: number) => (
+                              <tr key={i} className="hover:bg-muted/10">
+                                <td className="px-4 py-2 text-xs text-muted-foreground">{i + 1}</td>
+                                <td className="px-4 py-2 text-sm font-medium text-foreground">{r.method || "—"}</td>
+                                <td className="px-4 py-2 text-sm text-muted-foreground">{r.date ? formatDate(r.date) : "—"}</td>
+                                <td className="px-4 py-2 text-right text-sm font-semibold text-foreground">{formatCurrency(r.amount || 0)}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                          <tfoot className="bg-muted/30 border-t border-border/50">
+                            <tr>
+                              <td colSpan={3} className="px-4 py-2 text-xs font-medium text-muted-foreground">Total Paid</td>
+                              <td className="px-4 py-2 text-right text-sm font-bold text-foreground">{formatCurrency(paidAmt)}</td>
+                            </tr>
+                          </tfoot>
+                        </table>
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
 
               {/* Actions */}
               <div className="flex justify-end gap-2 pt-2 border-t border-border/40">

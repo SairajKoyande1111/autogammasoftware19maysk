@@ -862,7 +862,11 @@ app.use((req, res, next) => {
   app.delete("/api/vendor-purchases/:id", async (req, res) => {
     const purchase = await storage.getVendorPurchase(req.params.id);
     if (!purchase) return res.status(404).json({ message: "Purchase not found" });
-    await reverseSyncPurchaseItems(purchase.items as any[]);
+    try {
+      await reverseSyncPurchaseItems(purchase.items as any[]);
+    } catch (err) {
+      console.error("[DELETE PURCHASE] reverseSyncPurchaseItems error:", err);
+    }
     const success = await storage.deleteVendorPurchase(req.params.id);
     if (!success) return res.status(404).json({ message: "Purchase not found" });
     res.json({ message: "Purchase deleted" });

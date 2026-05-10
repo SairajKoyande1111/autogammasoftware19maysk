@@ -1105,9 +1105,9 @@ function VendorDetailView({ vendor, purchases, onBack, onEdit, onDelete, onAddPu
     mutationFn: (id: string) => apiRequest("DELETE", `/api/vendor-purchases/${id}`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/vendor-purchases"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/masters/ppf"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/masters/accessories"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/masters/accessory-categories"] });
+      queryClient.refetchQueries({ queryKey: ["/api/masters/ppf"] });
+      queryClient.refetchQueries({ queryKey: ["/api/masters/accessories"] });
+      queryClient.refetchQueries({ queryKey: ["/api/masters/accessory-categories"] });
       toast({ title: "Purchase deleted" });
     },
   });
@@ -1620,9 +1620,9 @@ export default function VendorManagementPage() {
     mutationFn: (id: string) => apiRequest("DELETE", `/api/vendor-purchases/${id}`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/vendor-purchases"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/masters/ppf"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/masters/accessories"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/masters/accessory-categories"] });
+      queryClient.refetchQueries({ queryKey: ["/api/masters/ppf"] });
+      queryClient.refetchQueries({ queryKey: ["/api/masters/accessories"] });
+      queryClient.refetchQueries({ queryKey: ["/api/masters/accessory-categories"] });
       toast({ title: "Purchase deleted" });
     },
   });

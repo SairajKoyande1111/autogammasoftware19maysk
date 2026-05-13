@@ -40,7 +40,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Calendar } from "@/components/ui/calendar";
 import { format } from "date-fns";
 
-const PAYMENT_MODES = ["Savings Account", "Current Account", "Personal"] as const;
+const PAYMENT_MODES = ["Savings Account", "Current Account", "Personal", "Cash"] as const;
 
 function fmtINR(n: number) {
   return n.toLocaleString("en-IN");
@@ -119,6 +119,7 @@ function PaymentModeBadge({ mode }: { mode?: string }) {
     "Savings Account": "bg-blue-50 text-blue-700 border-blue-200",
     "Current Account": "bg-purple-50 text-purple-700 border-purple-200",
     "Personal": "bg-orange-50 text-orange-700 border-orange-200",
+    "Cash": "bg-green-50 text-green-700 border-green-200",
   };
   return (
     <Badge variant="outline" className={`text-[11px] font-medium ${colors[mode] || "bg-slate-100 text-slate-600"}`}>

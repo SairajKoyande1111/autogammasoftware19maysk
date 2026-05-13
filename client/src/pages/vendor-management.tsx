@@ -1272,7 +1272,7 @@ function VendorDetailView({ vendor, purchases, onBack, onEdit, onDelete, onAddPu
               <table className="w-full text-sm">
                 <thead className="bg-muted/50 border-b border-border/60">
                   <tr>
-                    <th className="text-left px-4 py-3 font-medium text-muted-foreground">Date</th>
+                    <th className="text-left px-4 py-3 font-medium text-muted-foreground">Received Date</th>
                     <th className="text-left px-4 py-3 font-medium text-muted-foreground">No. of Items</th>
                     <th className="text-right px-4 py-3 font-medium text-muted-foreground">Purchase Cost</th>
                     <th className="text-right px-4 py-3 font-medium text-muted-foreground">Selling Total</th>

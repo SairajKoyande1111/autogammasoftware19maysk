@@ -64,6 +64,9 @@ function getItemSellTotal(item: any): number {
 function getPurchaseCost(p: any): number {
   return (p.items || []).reduce((sum: number, item: any) => sum + getItemCost(item), 0);
 }
+function getGrandTotal(p: any): number {
+  return Number((p as any).grandTotal) || getPurchaseCost(p);
+}
 function getSellingTotal(p: any): number {
   return (p.items || []).reduce((sum: number, item: any) => sum + getItemSellTotal(item), 0);
 }
@@ -1077,7 +1080,7 @@ interface VendorListRowProps {
 
 function VendorListRow({ vendor, purchases, onEdit, onDelete, onAddPurchase, onClick }: VendorListRowProps) {
   const vendorPurchases = purchases.filter(p => p.vendorId === vendor.id);
-  const totalSpend = vendorPurchases.reduce((sum, p) => sum + getPurchaseCost(p), 0);
+  const totalSpend = vendorPurchases.reduce((sum, p) => sum + getGrandTotal(p), 0);
   const lastPurchase = vendorPurchases.sort((a, b) => new Date(b.purchaseDate).getTime() - new Date(a.purchaseDate).getTime())[0];
 
   return (
@@ -1175,7 +1178,7 @@ function VendorDetailView({ vendor, purchases, onBack, onEdit, onDelete, onAddPu
   const vendorPurchases = purchases
     .filter(p => p.vendorId === vendor.id)
     .sort((a, b) => new Date(b.purchaseDate).getTime() - new Date(a.purchaseDate).getTime());
-  const totalSpend = vendorPurchases.reduce((sum, p) => sum + getPurchaseCost(p), 0);
+  const totalSpend = vendorPurchases.reduce((sum, p) => sum + getGrandTotal(p), 0);
 
   const totalPages = Math.ceil(vendorPurchases.length / PAGE_SIZE);
   const pagedPurchases = vendorPurchases.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
@@ -1317,7 +1320,7 @@ function VendorDetailView({ vendor, purchases, onBack, onEdit, onDelete, onAddPu
                         <span className="text-sm text-muted-foreground">{p.items.length} item{p.items.length !== 1 ? "s" : ""}</span>
                       </td>
                       <td className="px-4 py-3 text-right font-semibold text-foreground whitespace-nowrap">
-                        {formatCurrency(getPurchaseCost(p))}
+                        {formatCurrency(getGrandTotal(p))}
                       </td>
                       <td className="px-4 py-3">
                         {(() => {
@@ -1419,8 +1422,8 @@ function VendorDetailView({ vendor, purchases, onBack, onEdit, onDelete, onAddPu
                   <p className="text-sm font-semibold text-foreground">{viewingPurchase.receivedDate ? formatDate(viewingPurchase.receivedDate) : "—"}</p>
                 </div>
                 <div className="px-4 py-3">
-                  <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide mb-1">Purchase Cost</p>
-                  <p className="text-sm font-bold text-foreground">{formatCurrency(getPurchaseCost(viewingPurchase))}</p>
+                  <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide mb-1">Total Cost (incl. GST)</p>
+                  <p className="text-sm font-bold text-foreground">{formatCurrency(getGrandTotal(viewingPurchase))}</p>
                 </div>
               </div>
 
@@ -1465,7 +1468,7 @@ function VendorDetailView({ vendor, purchases, onBack, onEdit, onDelete, onAddPu
                                       {qty} {item.unit}
                                     </td>
                                     <td className="px-3 py-3 text-right text-sm text-foreground whitespace-nowrap">
-                                      —
+                                      {formatCurrency(rollCost)}
                                     </td>
                                     <td className="px-4 py-3 text-right text-sm font-semibold text-foreground whitespace-nowrap">
                                       {formatCurrency(rollCost)}
@@ -1711,7 +1714,7 @@ export default function VendorManagementPage() {
     },
   });
 
-  const totalSpend = purchases.reduce((sum, p) => sum + getPurchaseCost(p), 0);
+  const totalSpend = purchases.reduce((sum, p) => sum + getGrandTotal(p), 0);
   const thisMonth = purchases.filter(p => {
     const d = new Date(p.purchaseDate || p.createdAt || "");
     const now = new Date();
@@ -1731,8 +1734,8 @@ export default function VendorManagementPage() {
     .sort((a, b) => {
       const aPurchases = purchases.filter(p => p.vendorId === a.id);
       const bPurchases = purchases.filter(p => p.vendorId === b.id);
-      const aSpend = aPurchases.reduce((s, p) => s + getPurchaseCost(p), 0);
-      const bSpend = bPurchases.reduce((s, p) => s + getPurchaseCost(p), 0);
+      const aSpend = aPurchases.reduce((s, p) => s + getGrandTotal(p), 0);
+      const bSpend = bPurchases.reduce((s, p) => s + getGrandTotal(p), 0);
       switch (vendorSort) {
         case "name-asc": return a.name.localeCompare(b.name);
         case "name-desc": return b.name.localeCompare(a.name);
@@ -1755,14 +1758,14 @@ export default function VendorManagementPage() {
       switch (purchaseSort) {
         case "date-desc": return new Date(b.purchaseDate).getTime() - new Date(a.purchaseDate).getTime();
         case "date-asc": return new Date(a.purchaseDate).getTime() - new Date(b.purchaseDate).getTime();
-        case "amount-desc": return getPurchaseCost(b) - getPurchaseCost(a);
-        case "amount-asc": return getPurchaseCost(a) - getPurchaseCost(b);
+        case "amount-desc": return getGrandTotal(b) - getGrandTotal(a);
+        case "amount-asc": return getGrandTotal(a) - getGrandTotal(b);
         case "vendor-asc": return (a.vendorName || "").localeCompare(b.vendorName || "");
         default: return 0;
       }
     });
 
-  const filteredTotal = filteredPurchases.reduce((sum, p) => sum + getPurchaseCost(p), 0);
+  const filteredTotal = filteredPurchases.reduce((sum, p) => sum + getGrandTotal(p), 0);
   const uniqueVendors = vendors.filter((v, i, arr) => arr.findIndex(x => x.id === v.id) === i);
 
   // ── Full-screen Purchase Panel ───────────────────────────────────────────

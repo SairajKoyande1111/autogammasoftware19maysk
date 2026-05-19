@@ -629,8 +629,8 @@ function PurchaseForm({ vendorId, vendorName, purchase, onClose }: PurchaseFormP
     setPaymentRecords(prev => prev.map((r, idx) => idx === i ? { ...r, [field]: val } : r));
 
   const [gstEnabled, setGstEnabled] = useState<boolean>((purchase as any)?.gstEnabled ?? false);
-  const [cgstPercent, setCgstPercent] = useState<string>((purchase as any)?.cgstPercent?.toString() ?? "");
-  const [sgstPercent, setSgstPercent] = useState<string>((purchase as any)?.sgstPercent?.toString() ?? "");
+  const existingGst = ((purchase as any)?.cgstPercent || 0) + ((purchase as any)?.sgstPercent || 0);
+  const [gstPercent, setGstPercent] = useState<string>(existingGst > 0 ? existingGst.toString() : "");
 
   const emptyItem = (): any => ({
     itemType: "PPF", categoryName: "", name: "", rollName: "", ppfPricing: [], hsnCode: "", quantity: 1, unit: "sqft", unitPrice: 0,
@@ -660,8 +660,9 @@ function PurchaseForm({ vendorId, vendorName, purchase, onClose }: PurchaseFormP
 
   const total = items.reduce((sum, i) => sum + getItemCost(i), 0);
   const paidTotal = paymentRecords.reduce((sum, r) => sum + (Number(r.amount) || 0), 0);
-  const cgstAmt = gstEnabled && cgstPercent ? (total * parseFloat(cgstPercent)) / 100 : 0;
-  const sgstAmt = gstEnabled && sgstPercent ? (total * parseFloat(sgstPercent)) / 100 : 0;
+  const gstRate = gstEnabled && gstPercent ? parseFloat(gstPercent) : 0;
+  const cgstAmt = gstRate > 0 ? (total * (gstRate / 2)) / 100 : 0;
+  const sgstAmt = gstRate > 0 ? (total * (gstRate / 2)) / 100 : 0;
   const grandTotal = total + cgstAmt + sgstAmt;
 
   const invalidateMasters = () => {
@@ -726,8 +727,8 @@ function PurchaseForm({ vendorId, vendorName, purchase, onClose }: PurchaseFormP
       notes,
       totalAmount: total,
       gstEnabled,
-      cgstPercent: gstEnabled && cgstPercent ? parseFloat(cgstPercent) : 0,
-      sgstPercent: gstEnabled && sgstPercent ? parseFloat(sgstPercent) : 0,
+      cgstPercent: gstRate / 2,
+      sgstPercent: gstRate / 2,
       cgstAmount: cgstAmt,
       sgstAmount: sgstAmt,
       grandTotal,
@@ -834,52 +835,37 @@ function PurchaseForm({ vendorId, vendorName, purchase, onClose }: PurchaseFormP
 
           {gstEnabled && (
             <div className="space-y-3 pl-6">
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-1.5">
-                  <label className="text-xs font-medium text-muted-foreground">CGST %</label>
-                  <Input
-                    data-testid="input-cgst-percent"
-                    className="h-9 text-sm"
-                    type="number" min={0} max={100} step={0.01}
-                    placeholder="e.g. 9"
-                    value={cgstPercent}
-                    onChange={e => setCgstPercent(e.target.value)}
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <label className="text-xs font-medium text-muted-foreground">SGST %</label>
-                  <Input
-                    data-testid="input-sgst-percent"
-                    className="h-9 text-sm"
-                    type="number" min={0} max={100} step={0.01}
-                    placeholder="e.g. 9"
-                    value={sgstPercent}
-                    onChange={e => setSgstPercent(e.target.value)}
-                  />
-                </div>
+              <div className="max-w-[200px] space-y-1.5">
+                <label className="text-xs font-medium text-muted-foreground">GST %</label>
+                <Input
+                  data-testid="input-gst-percent"
+                  className="h-9 text-sm"
+                  type="number" min={0} max={100} step={0.01}
+                  placeholder="e.g. 18"
+                  value={gstPercent}
+                  onChange={e => setGstPercent(e.target.value)}
+                />
               </div>
-              <div className="rounded-lg border border-border/60 bg-muted/20 px-4 py-3 space-y-1.5 text-sm">
-                <div className="flex justify-between text-muted-foreground">
-                  <span>Base Amount</span>
-                  <span>{formatCurrency(total)}</span>
-                </div>
-                {cgstAmt > 0 && (
+              {gstRate > 0 && (
+                <div className="rounded-lg border border-border/60 bg-muted/20 px-4 py-3 space-y-1.5 text-sm">
                   <div className="flex justify-between text-muted-foreground">
-                    <span>CGST ({cgstPercent}%)</span>
+                    <span>Base Amount</span>
+                    <span>{formatCurrency(total)}</span>
+                  </div>
+                  <div className="flex justify-between text-muted-foreground">
+                    <span>CGST ({gstRate / 2}%)</span>
                     <span>{formatCurrency(cgstAmt)}</span>
                   </div>
-                )}
-                {sgstAmt > 0 && (
                   <div className="flex justify-between text-muted-foreground">
-                    <span>SGST ({sgstPercent}%)</span>
+                    <span>SGST ({gstRate / 2}%)</span>
                     <span>{formatCurrency(sgstAmt)}</span>
                   </div>
-                )}
-                <div className="flex justify-between font-bold text-foreground border-t border-border/60 pt-1.5 mt-1">
-                  <span>Grand Total (incl. GST)</span>
-                  <span>{formatCurrency(grandTotal)}</span>
+                  <div className="flex justify-between font-bold text-foreground border-t border-border/60 pt-1.5 mt-1">
+                    <span>Grand Total (incl. GST)</span>
+                    <span>{formatCurrency(grandTotal)}</span>
+                  </div>
                 </div>
-              </div>
+              )}
             </div>
           )}
         </div>
@@ -1456,37 +1442,46 @@ function VendorDetailView({ vendor, purchases, onBack, onEdit, onDelete, onAddPu
                                 <th className="text-left px-3 py-2.5 text-[11px] font-semibold text-muted-foreground uppercase tracking-wide whitespace-nowrap">Roll / Batch</th>
                                 <th className="text-left px-3 py-2.5 text-[11px] font-semibold text-muted-foreground uppercase tracking-wide whitespace-nowrap">HSN</th>
                                 <th className="text-right px-3 py-2.5 text-[11px] font-semibold text-muted-foreground uppercase tracking-wide whitespace-nowrap">Qty</th>
-                                <th className="text-right px-4 py-2.5 text-[11px] font-semibold text-muted-foreground uppercase tracking-wide whitespace-nowrap">Unit Price</th>
+                                <th className="text-right px-3 py-2.5 text-[11px] font-semibold text-muted-foreground uppercase tracking-wide whitespace-nowrap">Unit Price</th>
+                                <th className="text-right px-4 py-2.5 text-[11px] font-semibold text-muted-foreground uppercase tracking-wide whitespace-nowrap">Total</th>
                               </tr>
                             </thead>
                             <tbody className="divide-y divide-border/30">
-                              {ppfItems.map((item: any, i: number) => (
-                                <tr key={i} className="hover:bg-muted/10 transition-colors">
-                                  <td className="px-4 py-3 whitespace-nowrap">
-                                    <span className="text-sm font-medium text-foreground">{item.name}</span>
-                                  </td>
-                                  <td className="px-3 py-3 text-sm text-muted-foreground whitespace-nowrap">
-                                    {item.rollName || "—"}
-                                  </td>
-                                  <td className="px-3 py-3 whitespace-nowrap">
-                                    {item.hsnCode ? <span className="text-sm font-mono text-foreground">{item.hsnCode}</span> : <span className="text-muted-foreground/40">—</span>}
-                                  </td>
-                                  <td className="px-3 py-3 text-right text-sm text-foreground whitespace-nowrap">
-                                    {item.quantity} {item.unit}
-                                  </td>
-                                  <td className="px-4 py-3 text-right text-sm font-semibold text-foreground whitespace-nowrap">
-                                    {formatCurrency(item.unitPrice || 0)}
-                                  </td>
-                                </tr>
-                              ))}
+                              {ppfItems.map((item: any, i: number) => {
+                                const qty = Number(item.quantity) || 1;
+                                const unitPrice = Number(item.unitPrice) || 0;
+                                const total = unitPrice * qty;
+                                return (
+                                  <tr key={i} className="hover:bg-muted/10 transition-colors">
+                                    <td className="px-4 py-3 whitespace-nowrap">
+                                      <span className="text-sm font-medium text-foreground">{item.name}</span>
+                                    </td>
+                                    <td className="px-3 py-3 text-sm text-muted-foreground whitespace-nowrap">
+                                      {item.rollName || "—"}
+                                    </td>
+                                    <td className="px-3 py-3 whitespace-nowrap">
+                                      {item.hsnCode ? <span className="text-sm font-mono text-foreground">{item.hsnCode}</span> : <span className="text-muted-foreground/40">—</span>}
+                                    </td>
+                                    <td className="px-3 py-3 text-right text-sm text-foreground whitespace-nowrap">
+                                      {qty} {item.unit}
+                                    </td>
+                                    <td className="px-3 py-3 text-right text-sm text-foreground whitespace-nowrap">
+                                      {formatCurrency(unitPrice)}
+                                    </td>
+                                    <td className="px-4 py-3 text-right text-sm font-semibold text-foreground whitespace-nowrap">
+                                      {formatCurrency(total)}
+                                    </td>
+                                  </tr>
+                                );
+                              })}
                             </tbody>
                             <tfoot className="bg-muted/30 border-t border-border/50">
                               <tr>
-                                <td colSpan={4} className="px-4 py-2.5 text-xs font-medium text-muted-foreground">
+                                <td colSpan={5} className="px-4 py-2.5 text-xs font-medium text-muted-foreground">
                                   {ppfItems.length} roll{ppfItems.length !== 1 ? "s" : ""}
                                 </td>
                                 <td className="px-4 py-2.5 text-right text-sm font-bold text-foreground whitespace-nowrap">
-                                  {formatCurrency(ppfItems.reduce((s: number, it: any) => s + (Number(it.unitPrice) || 0), 0))}
+                                  {formatCurrency(ppfItems.reduce((s: number, it: any) => s + (Number(it.unitPrice) || 0) * (Number(it.quantity) || 1), 0))}
                                 </td>
                               </tr>
                             </tfoot>

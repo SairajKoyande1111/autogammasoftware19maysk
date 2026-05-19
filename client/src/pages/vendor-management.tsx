@@ -522,59 +522,33 @@ function ItemRow({ idx, item, ppfMasters, accessories, categories, vehicleTypes,
           </div>
         </div>
 
-        {/* Row B: Pricing — Accessory shows per-unit with computed totals; PPF keeps as-is */}
+        {/* Row B: Pricing */}
         {item.itemType === "Accessory" ? (
-          <div className="space-y-3">
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-1.5">
-                <label className="text-xs font-medium text-muted-foreground">Unit Price (₹)</label>
-                <Input data-testid={`input-item-price-${idx}`} className="h-9 text-sm"
-                  type="number" min={0} placeholder="0" value={item.unitPrice}
-                  onChange={e => onChange(idx, { ...item, unitPrice: Number(e.target.value) })} />
-              </div>
-              <div className="space-y-1.5">
-                <label className="text-xs font-medium text-muted-foreground">Cost Total</label>
-                <div className="h-9 flex items-center px-3 rounded-md border border-border/40 bg-muted/30 text-sm font-semibold text-foreground">
-                  {formatCurrency((item.unitPrice || 0) * (item.quantity || 0))}
-                </div>
-              </div>
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-muted-foreground">Unit Price (₹)</label>
+              <Input data-testid={`input-item-price-${idx}`} className="h-9 text-sm"
+                type="number" min={0} placeholder="0" value={item.unitPrice}
+                onChange={e => onChange(idx, { ...item, unitPrice: Number(e.target.value) })} />
             </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-1.5">
-                <label className="text-xs font-medium text-emerald-600">Unit Selling Price (₹)</label>
-                <Input data-testid={`input-item-selling-price-${idx}`} className="h-9 text-sm border-emerald-400/60 focus:border-emerald-500"
-                  type="number" min={0} placeholder="0"
-                  value={(item as any).sellingPrice ?? 0}
-                  onChange={e => onChange(idx, { ...item, sellingPrice: Number(e.target.value) })} />
-              </div>
-              <div className="space-y-1.5">
-                <label className="text-xs font-medium text-emerald-600">Sell Total</label>
-                <div className="h-9 flex items-center px-3 rounded-md border border-emerald-400/40 bg-emerald-50/40 text-sm font-bold text-emerald-600">
-                  {formatCurrency(((item as any).sellingPrice || 0) * (item.quantity || 0))}
-                </div>
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-muted-foreground">Cost Total</label>
+              <div className="h-9 flex items-center px-3 rounded-md border border-border/40 bg-muted/30 text-sm font-semibold text-foreground">
+                {formatCurrency((item.unitPrice || 0) * (item.quantity || 0))}
               </div>
             </div>
           </div>
         ) : (
-          <div className="grid grid-cols-[1fr_1fr_auto] gap-4 items-end">
+          <div className="grid grid-cols-[1fr_auto] gap-4 items-end">
             <div className="space-y-1.5">
               <label className="text-xs font-medium text-muted-foreground">Unit Price (₹) — Cost</label>
               <Input data-testid={`input-item-price-${idx}`} className="h-9 text-sm"
                 type="number" min={0} placeholder="0" value={item.unitPrice}
                 onChange={e => onChange(idx, { ...item, unitPrice: Number(e.target.value) })} />
             </div>
-            <div className="space-y-1.5">
-              <label className="text-xs font-medium text-emerald-600">Sell Price (₹) — Revenue</label>
-              <Input data-testid={`input-item-selling-price-${idx}`} className="h-9 text-sm border-emerald-400/60 focus:border-emerald-500 focus:ring-emerald-500/20"
-                type="number" min={0} placeholder="0"
-                value={(item as any).sellingPrice ?? 0}
-                onChange={e => onChange(idx, { ...item, sellingPrice: Number(e.target.value) })} />
-            </div>
             <div className="pb-0.5 text-right min-w-[100px]">
               <p className="text-[10px] text-muted-foreground mb-0.5">Cost total</p>
               <p className="text-sm font-semibold text-foreground">{formatCurrency(item.unitPrice || 0)}</p>
-              <p className="text-[10px] text-emerald-600 mt-1 mb-0.5">Sell total</p>
-              <p className="text-sm font-bold text-emerald-600">{formatCurrency((item as any).sellingPrice || 0)}</p>
             </div>
           </div>
         )}
@@ -654,8 +628,12 @@ function PurchaseForm({ vendorId, vendorName, purchase, onClose }: PurchaseFormP
   const updatePaymentRecord = (i: number, field: string, val: string | number) =>
     setPaymentRecords(prev => prev.map((r, idx) => idx === i ? { ...r, [field]: val } : r));
 
+  const [gstEnabled, setGstEnabled] = useState<boolean>((purchase as any)?.gstEnabled ?? false);
+  const [cgstPercent, setCgstPercent] = useState<string>((purchase as any)?.cgstPercent?.toString() ?? "");
+  const [sgstPercent, setSgstPercent] = useState<string>((purchase as any)?.sgstPercent?.toString() ?? "");
+
   const emptyItem = (): any => ({
-    itemType: "PPF", categoryName: "", name: "", rollName: "", ppfPricing: [], hsnCode: "", quantity: 1, unit: "sqft", unitPrice: 0, sellingPrice: 0,
+    itemType: "PPF", categoryName: "", name: "", rollName: "", ppfPricing: [], hsnCode: "", quantity: 1, unit: "sqft", unitPrice: 0,
   });
 
   const [items, setItems] = useState<any[]>(
@@ -681,8 +659,10 @@ function PurchaseForm({ vendorId, vendorName, purchase, onClose }: PurchaseFormP
   const updateItem = (idx: number, updated: any) => setItems(prev => prev.map((item, i) => i === idx ? updated : item));
 
   const total = items.reduce((sum, i) => sum + getItemCost(i), 0);
-  const sellingTotal = items.reduce((sum, i) => sum + getItemSellTotal(i), 0);
   const paidTotal = paymentRecords.reduce((sum, r) => sum + (Number(r.amount) || 0), 0);
+  const cgstAmt = gstEnabled && cgstPercent ? (total * parseFloat(cgstPercent)) / 100 : 0;
+  const sgstAmt = gstEnabled && sgstPercent ? (total * parseFloat(sgstPercent)) / 100 : 0;
+  const grandTotal = total + cgstAmt + sgstAmt;
 
   const invalidateMasters = () => {
     queryClient.invalidateQueries({ queryKey: ["/api/masters/ppf"] });
@@ -745,7 +725,12 @@ function PurchaseForm({ vendorId, vendorName, purchase, onClose }: PurchaseFormP
       receivedDate,
       notes,
       totalAmount: total,
-      sellingTotal,
+      gstEnabled,
+      cgstPercent: gstEnabled && cgstPercent ? parseFloat(cgstPercent) : 0,
+      sgstPercent: gstEnabled && sgstPercent ? parseFloat(sgstPercent) : 0,
+      cgstAmount: cgstAmt,
+      sgstAmount: sgstAmt,
+      grandTotal,
       paymentStatus,
       payments: paymentStatus === "unpaid" ? [] : paymentRecords.filter(r => r.amount > 0),
     };
@@ -830,16 +815,73 @@ function PurchaseForm({ vendorId, vendorName, purchase, onClose }: PurchaseFormP
 
         <div className="flex justify-between items-center px-1 pt-3 border-t border-border/60">
           <span className="text-sm text-muted-foreground">{items.filter(i => i.name).length} item(s)</span>
-          <div className="flex items-center gap-6">
-            <div className="text-right">
-              <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">Purchase Cost</p>
-              <p className="text-base font-bold text-foreground mt-0.5">{formatCurrency(total)}</p>
-            </div>
-            <div className="text-right">
-              <p className="text-[11px] font-medium text-emerald-600 uppercase tracking-wide">Selling Total</p>
-              <p className="text-lg font-bold text-emerald-600 mt-0.5">{formatCurrency(sellingTotal)}</p>
-            </div>
+          <div className="text-right">
+            <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">Purchase Cost</p>
+            <p className="text-base font-bold text-foreground mt-0.5">{formatCurrency(total)}</p>
           </div>
+        </div>
+
+        {/* GST Section */}
+        <div className="mt-4 pt-4 border-t border-border/60 space-y-3">
+          <label className="flex items-center gap-2 cursor-pointer select-none">
+            <Checkbox
+              data-testid="checkbox-gst-enabled"
+              checked={gstEnabled}
+              onCheckedChange={(v) => setGstEnabled(!!v)}
+            />
+            <span className="text-sm font-semibold text-foreground">Apply GST (external — added on top of purchase cost)</span>
+          </label>
+
+          {gstEnabled && (
+            <div className="space-y-3 pl-6">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1.5">
+                  <label className="text-xs font-medium text-muted-foreground">CGST %</label>
+                  <Input
+                    data-testid="input-cgst-percent"
+                    className="h-9 text-sm"
+                    type="number" min={0} max={100} step={0.01}
+                    placeholder="e.g. 9"
+                    value={cgstPercent}
+                    onChange={e => setCgstPercent(e.target.value)}
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-xs font-medium text-muted-foreground">SGST %</label>
+                  <Input
+                    data-testid="input-sgst-percent"
+                    className="h-9 text-sm"
+                    type="number" min={0} max={100} step={0.01}
+                    placeholder="e.g. 9"
+                    value={sgstPercent}
+                    onChange={e => setSgstPercent(e.target.value)}
+                  />
+                </div>
+              </div>
+              <div className="rounded-lg border border-border/60 bg-muted/20 px-4 py-3 space-y-1.5 text-sm">
+                <div className="flex justify-between text-muted-foreground">
+                  <span>Base Amount</span>
+                  <span>{formatCurrency(total)}</span>
+                </div>
+                {cgstAmt > 0 && (
+                  <div className="flex justify-between text-muted-foreground">
+                    <span>CGST ({cgstPercent}%)</span>
+                    <span>{formatCurrency(cgstAmt)}</span>
+                  </div>
+                )}
+                {sgstAmt > 0 && (
+                  <div className="flex justify-between text-muted-foreground">
+                    <span>SGST ({sgstPercent}%)</span>
+                    <span>{formatCurrency(sgstAmt)}</span>
+                  </div>
+                )}
+                <div className="flex justify-between font-bold text-foreground border-t border-border/60 pt-1.5 mt-1">
+                  <span>Grand Total (incl. GST)</span>
+                  <span>{formatCurrency(grandTotal)}</span>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       </div>
 

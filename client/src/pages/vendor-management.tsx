@@ -704,16 +704,16 @@ function PurchaseForm({ vendorId, vendorName, purchase, onClose }: PurchaseFormP
         return;
       }
       const currentPaidTotal = validPayments.reduce((s, r) => s + (Number(r.amount) || 0), 0);
-      if (currentPaidTotal > total) {
-        toast({ title: "Error", description: "Total paid amount cannot exceed the purchase cost total", variant: "destructive" });
+      if (currentPaidTotal > grandTotal) {
+        toast({ title: "Error", description: "Total paid amount cannot exceed the grand total", variant: "destructive" });
         return;
       }
-      if (paymentStatus === "paid" && Math.abs(currentPaidTotal - total) > 0.01) {
-        toast({ title: "Error", description: `For "Paid" status, total paid (${formatCurrency(currentPaidTotal)}) must equal the purchase cost (${formatCurrency(total)})`, variant: "destructive" });
+      if (paymentStatus === "paid" && Math.abs(currentPaidTotal - grandTotal) > 0.01) {
+        toast({ title: "Error", description: `For "Paid" status, total paid (${formatCurrency(currentPaidTotal)}) must equal the grand total (${formatCurrency(grandTotal)})`, variant: "destructive" });
         return;
       }
-      if (paymentStatus === "partially_paid" && currentPaidTotal >= total) {
-        toast({ title: "Error", description: `For "Partially Paid", the amount (${formatCurrency(currentPaidTotal)}) must be less than the purchase cost (${formatCurrency(total)}). Use "Paid" instead.`, variant: "destructive" });
+      if (paymentStatus === "partially_paid" && currentPaidTotal >= grandTotal) {
+        toast({ title: "Error", description: `For "Partially Paid", the amount (${formatCurrency(currentPaidTotal)}) must be less than the grand total (${formatCurrency(grandTotal)}). Use "Paid" instead.`, variant: "destructive" });
         return;
       }
     }
@@ -984,7 +984,7 @@ function PurchaseForm({ vendorId, vendorName, purchase, onClose }: PurchaseFormP
               <div className="text-right text-sm">
                 <span className="text-muted-foreground">Total paid: </span>
                 <span className="font-bold text-foreground">{formatCurrency(paidTotal)}</span>
-                <span className="text-muted-foreground"> / {formatCurrency(total)}</span>
+                <span className="text-muted-foreground"> / {formatCurrency(grandTotal)}</span>
               </div>
             </div>
           </div>
@@ -1449,8 +1449,7 @@ function VendorDetailView({ vendor, purchases, onBack, onEdit, onDelete, onAddPu
                             <tbody className="divide-y divide-border/30">
                               {ppfItems.map((item: any, i: number) => {
                                 const qty = Number(item.quantity) || 1;
-                                const unitPrice = Number(item.unitPrice) || 0;
-                                const total = unitPrice * qty;
+                                const rollCost = Number(item.unitPrice) || 0;
                                 return (
                                   <tr key={i} className="hover:bg-muted/10 transition-colors">
                                     <td className="px-4 py-3 whitespace-nowrap">
@@ -1466,10 +1465,10 @@ function VendorDetailView({ vendor, purchases, onBack, onEdit, onDelete, onAddPu
                                       {qty} {item.unit}
                                     </td>
                                     <td className="px-3 py-3 text-right text-sm text-foreground whitespace-nowrap">
-                                      {formatCurrency(unitPrice)}
+                                      —
                                     </td>
                                     <td className="px-4 py-3 text-right text-sm font-semibold text-foreground whitespace-nowrap">
-                                      {formatCurrency(total)}
+                                      {formatCurrency(rollCost)}
                                     </td>
                                   </tr>
                                 );
@@ -1481,7 +1480,7 @@ function VendorDetailView({ vendor, purchases, onBack, onEdit, onDelete, onAddPu
                                   {ppfItems.length} roll{ppfItems.length !== 1 ? "s" : ""}
                                 </td>
                                 <td className="px-4 py-2.5 text-right text-sm font-bold text-foreground whitespace-nowrap">
-                                  {formatCurrency(ppfItems.reduce((s: number, it: any) => s + (Number(it.unitPrice) || 0) * (Number(it.quantity) || 1), 0))}
+                                  {formatCurrency(ppfItems.reduce((s: number, it: any) => s + (Number(it.unitPrice) || 0), 0))}
                                 </td>
                               </tr>
                             </tfoot>

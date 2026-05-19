@@ -1317,7 +1317,6 @@ function VendorDetailView({ vendor, purchases, onBack, onEdit, onDelete, onAddPu
                     <th className="text-left px-4 py-3 font-medium text-muted-foreground">Received Date</th>
                     <th className="text-left px-4 py-3 font-medium text-muted-foreground">No. of Items</th>
                     <th className="text-right px-4 py-3 font-medium text-muted-foreground">Purchase Cost</th>
-                    <th className="text-right px-4 py-3 font-medium text-muted-foreground">Selling Total</th>
                     <th className="text-left px-4 py-3 font-medium text-muted-foreground">Payment</th>
                     <th className="px-4 py-3 w-28 text-right font-medium text-muted-foreground">Actions</th>
                   </tr>
@@ -1333,11 +1332,6 @@ function VendorDetailView({ vendor, purchases, onBack, onEdit, onDelete, onAddPu
                       </td>
                       <td className="px-4 py-3 text-right font-semibold text-foreground whitespace-nowrap">
                         {formatCurrency(getPurchaseCost(p))}
-                      </td>
-                      <td className="px-4 py-3 text-right font-semibold whitespace-nowrap">
-                        {getSellingTotal(p) > 0
-                          ? <span className="text-foreground">{formatCurrency(getSellingTotal(p))}</span>
-                          : <span className="text-muted-foreground/40">—</span>}
                       </td>
                       <td className="px-4 py-3">
                         {(() => {
@@ -1384,9 +1378,6 @@ function VendorDetailView({ vendor, purchases, onBack, onEdit, onDelete, onAddPu
                       {vendorPurchases.length} purchase{vendorPurchases.length !== 1 ? "s" : ""}
                     </td>
                     <td className="px-4 py-3 text-right font-bold text-foreground">{formatCurrency(totalSpend)}</td>
-                    <td className="px-4 py-3 text-right font-bold text-foreground">
-                      {formatCurrency(vendorPurchases.reduce((s, p) => s + getSellingTotal(p), 0))}
-                    </td>
                     <td colSpan={2} />
                   </tr>
                 </tfoot>
@@ -1445,10 +1436,16 @@ function VendorDetailView({ vendor, purchases, onBack, onEdit, onDelete, onAddPu
                   <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide mb-1">Purchase Cost</p>
                   <p className="text-sm font-bold text-foreground">{formatCurrency(getPurchaseCost(viewingPurchase))}</p>
                 </div>
-                <div className="px-4 py-3">
-                  <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide mb-1">Selling Total</p>
-                  <p className="text-sm font-bold text-foreground">{formatCurrency(getSellingTotal(viewingPurchase))}</p>
-                </div>
+                {(viewingPurchase as any).gstEnabled && (
+                  <div className="px-4 py-3">
+                    <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide mb-1">Grand Total (incl. GST)</p>
+                    <p className="text-sm font-bold text-foreground">{formatCurrency((viewingPurchase as any).grandTotal || getPurchaseCost(viewingPurchase))}</p>
+                    <p className="text-[10px] text-muted-foreground mt-0.5">
+                      {(viewingPurchase as any).cgstPercent > 0 && `CGST ${(viewingPurchase as any).cgstPercent}% + `}
+                      {(viewingPurchase as any).sgstPercent > 0 && `SGST ${(viewingPurchase as any).sgstPercent}%`}
+                    </p>
+                  </div>
+                )}
               </div>
 
               {/* Items — split by type */}
@@ -1469,8 +1466,7 @@ function VendorDetailView({ vendor, purchases, onBack, onEdit, onDelete, onAddPu
                                 <th className="text-left px-3 py-2.5 text-[11px] font-semibold text-muted-foreground uppercase tracking-wide whitespace-nowrap">Roll / Batch</th>
                                 <th className="text-left px-3 py-2.5 text-[11px] font-semibold text-muted-foreground uppercase tracking-wide whitespace-nowrap">HSN</th>
                                 <th className="text-right px-3 py-2.5 text-[11px] font-semibold text-muted-foreground uppercase tracking-wide whitespace-nowrap">Qty</th>
-                                <th className="text-right px-3 py-2.5 text-[11px] font-semibold text-muted-foreground uppercase tracking-wide whitespace-nowrap">Unit Price</th>
-                                <th className="text-right px-4 py-2.5 text-[11px] font-semibold text-emerald-600 uppercase tracking-wide whitespace-nowrap">Sell Price</th>
+                                <th className="text-right px-4 py-2.5 text-[11px] font-semibold text-muted-foreground uppercase tracking-wide whitespace-nowrap">Unit Price</th>
                               </tr>
                             </thead>
                             <tbody className="divide-y divide-border/30">
@@ -1488,11 +1484,8 @@ function VendorDetailView({ vendor, purchases, onBack, onEdit, onDelete, onAddPu
                                   <td className="px-3 py-3 text-right text-sm text-foreground whitespace-nowrap">
                                     {item.quantity} {item.unit}
                                   </td>
-                                  <td className="px-3 py-3 text-right text-sm font-semibold text-foreground whitespace-nowrap">
+                                  <td className="px-4 py-3 text-right text-sm font-semibold text-foreground whitespace-nowrap">
                                     {formatCurrency(item.unitPrice || 0)}
-                                  </td>
-                                  <td className="px-4 py-3 text-right text-sm font-semibold text-emerald-600 whitespace-nowrap">
-                                    {(item.sellingPrice || 0) > 0 ? formatCurrency(item.sellingPrice) : <span className="text-muted-foreground/40">—</span>}
                                   </td>
                                 </tr>
                               ))}
@@ -1502,11 +1495,8 @@ function VendorDetailView({ vendor, purchases, onBack, onEdit, onDelete, onAddPu
                                 <td colSpan={4} className="px-4 py-2.5 text-xs font-medium text-muted-foreground">
                                   {ppfItems.length} roll{ppfItems.length !== 1 ? "s" : ""}
                                 </td>
-                                <td className="px-3 py-2.5 text-right text-sm font-bold text-foreground whitespace-nowrap">
+                                <td className="px-4 py-2.5 text-right text-sm font-bold text-foreground whitespace-nowrap">
                                   {formatCurrency(ppfItems.reduce((s: number, it: any) => s + (Number(it.unitPrice) || 0), 0))}
-                                </td>
-                                <td className="px-4 py-2.5 text-right text-sm font-bold text-emerald-600 whitespace-nowrap">
-                                  {formatCurrency(ppfItems.reduce((s: number, it: any) => s + (Number(it.sellingPrice) || 0), 0))}
                                 </td>
                               </tr>
                             </tfoot>
@@ -1528,18 +1518,14 @@ function VendorDetailView({ vendor, purchases, onBack, onEdit, onDelete, onAddPu
                                 <th className="text-left px-3 py-2.5 text-[11px] font-semibold text-muted-foreground uppercase tracking-wide whitespace-nowrap">HSN</th>
                                 <th className="text-right px-3 py-2.5 text-[11px] font-semibold text-muted-foreground uppercase tracking-wide whitespace-nowrap">Qty</th>
                                 <th className="text-right px-3 py-2.5 text-[11px] font-semibold text-muted-foreground uppercase tracking-wide whitespace-nowrap">Unit Price</th>
-                                <th className="text-right px-3 py-2.5 text-[11px] font-semibold text-muted-foreground uppercase tracking-wide whitespace-nowrap">Cost Total</th>
-                                <th className="text-right px-3 py-2.5 text-[11px] font-semibold text-emerald-600 uppercase tracking-wide whitespace-nowrap">Unit Sell</th>
-                                <th className="text-right px-4 py-2.5 text-[11px] font-semibold text-emerald-600 uppercase tracking-wide whitespace-nowrap">Sell Total</th>
+                                <th className="text-right px-4 py-2.5 text-[11px] font-semibold text-muted-foreground uppercase tracking-wide whitespace-nowrap">Cost Total</th>
                               </tr>
                             </thead>
                             <tbody className="divide-y divide-border/30">
                               {accItems.map((item: any, i: number) => {
                                 const qty = Number(item.quantity) || 0;
                                 const unitPrice = Number(item.unitPrice) || 0;
-                                const sellingPrice = Number(item.sellingPrice) || 0;
                                 const costTotal = unitPrice * qty;
-                                const sellTotal = sellingPrice * qty;
                                 return (
                                   <tr key={i} className="hover:bg-muted/10 transition-colors">
                                     <td className="px-4 py-3 whitespace-nowrap">
@@ -1557,14 +1543,8 @@ function VendorDetailView({ vendor, purchases, onBack, onEdit, onDelete, onAddPu
                                     <td className="px-3 py-3 text-right text-sm text-foreground whitespace-nowrap">
                                       {formatCurrency(unitPrice)}
                                     </td>
-                                    <td className="px-3 py-3 text-right text-sm font-semibold text-foreground whitespace-nowrap">
+                                    <td className="px-4 py-3 text-right text-sm font-semibold text-foreground whitespace-nowrap">
                                       {formatCurrency(costTotal)}
-                                    </td>
-                                    <td className="px-3 py-3 text-right text-sm text-emerald-600 whitespace-nowrap">
-                                      {sellingPrice > 0 ? formatCurrency(sellingPrice) : <span className="text-muted-foreground/40">—</span>}
-                                    </td>
-                                    <td className="px-4 py-3 text-right text-sm font-semibold text-emerald-600 whitespace-nowrap">
-                                      {sellTotal > 0 ? formatCurrency(sellTotal) : <span className="text-muted-foreground/40">—</span>}
                                     </td>
                                   </tr>
                                 );
@@ -1575,12 +1555,8 @@ function VendorDetailView({ vendor, purchases, onBack, onEdit, onDelete, onAddPu
                                 <td colSpan={5} className="px-4 py-2.5 text-xs font-medium text-muted-foreground">
                                   {accItems.length} item{accItems.length !== 1 ? "s" : ""}
                                 </td>
-                                <td className="px-3 py-2.5 text-right text-sm font-bold text-foreground whitespace-nowrap">
+                                <td className="px-4 py-2.5 text-right text-sm font-bold text-foreground whitespace-nowrap">
                                   {formatCurrency(accItems.reduce((s: number, it: any) => s + (Number(it.unitPrice) || 0) * (Number(it.quantity) || 0), 0))}
-                                </td>
-                                <td />
-                                <td className="px-4 py-2.5 text-right text-sm font-bold text-emerald-600 whitespace-nowrap">
-                                  {formatCurrency(accItems.reduce((s: number, it: any) => s + (Number(it.sellingPrice) || 0) * (Number(it.quantity) || 0), 0))}
                                 </td>
                               </tr>
                             </tfoot>
@@ -2043,7 +2019,6 @@ export default function VendorManagementPage() {
                             </span>
                             <div className="text-right flex-shrink-0 ml-2">
                               <p className="text-muted-foreground">{formatCurrency(item.unitPrice || 0)}</p>
-                              {item.sellingPrice > 0 && <p className="text-emerald-600 font-semibold">{formatCurrency(item.sellingPrice)}</p>}
                             </div>
                           </div>
                         ))}
@@ -2054,15 +2029,9 @@ export default function VendorManagementPage() {
                 })}
                 <div className="flex justify-between items-center pt-2 border-t border-border/60">
                   <span className="text-sm text-muted-foreground">{filteredPurchases.length} purchase{filteredPurchases.length !== 1 ? "s" : ""}</span>
-                  <div className="flex items-center gap-4">
-                    <div className="text-right">
-                      <p className="text-[10px] text-muted-foreground">Purchase Cost</p>
-                      <p className="text-sm font-semibold text-foreground">{formatCurrency(filteredTotal)}</p>
-                    </div>
-                    <div className="text-right">
-                      <p className="text-[10px] text-muted-foreground">Selling Total</p>
-                      <p className="text-sm font-bold text-emerald-600">{formatCurrency(filteredPurchases.reduce((sum, p) => sum + getSellingTotal(p), 0))}</p>
-                    </div>
+                  <div className="text-right">
+                    <p className="text-[10px] text-muted-foreground">Purchase Cost</p>
+                    <p className="text-sm font-semibold text-foreground">{formatCurrency(filteredTotal)}</p>
                   </div>
                 </div>
               </div>

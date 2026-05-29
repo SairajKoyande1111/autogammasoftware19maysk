@@ -334,6 +334,7 @@ const vendorPurchaseMongoSchema = new mongoose.Schema({
   totalAmount: { type: Number, default: 0 },
   sellingTotal: { type: Number, default: 0 },
   gstEnabled: { type: Boolean, default: false },
+  gstType: { type: String, enum: ["none", "external", "internal"], default: "none" },
   cgstPercent: { type: Number, default: 0 },
   sgstPercent: { type: Number, default: 0 },
   cgstAmount: { type: Number, default: 0 },
@@ -2487,16 +2488,22 @@ export class MongoStorage implements IStorage {
       return sum + (item.unitPrice || 0);
     }, 0);
     const gstEnabled = (purchase as any).gstEnabled ?? false;
+    const gstType: string = (purchase as any).gstType ?? (gstEnabled ? "external" : "none");
     const cgstPercent = (purchase as any).cgstPercent ?? 0;
     const sgstPercent = (purchase as any).sgstPercent ?? 0;
-    const cgstAmount = gstEnabled ? (total * cgstPercent) / 100 : 0;
-    const sgstAmount = gstEnabled ? (total * sgstPercent) / 100 : 0;
-    const grandTotal = total + cgstAmount + sgstAmount;
+    // Internal: GST included in price; External: GST added on top
+    const baseAmount = gstType === "internal" && (cgstPercent + sgstPercent) > 0
+      ? total / (1 + (cgstPercent + sgstPercent) / 100)
+      : total;
+    const cgstAmount = gstEnabled ? (baseAmount * cgstPercent) / 100 : 0;
+    const sgstAmount = gstEnabled ? (baseAmount * sgstPercent) / 100 : 0;
+    const grandTotal = gstType === "external" ? total + cgstAmount + sgstAmount : total;
     const p = new VendorPurchaseModel({
       ...purchase,
       totalAmount: total,
       sellingTotal: 0,
       gstEnabled,
+      gstType,
       cgstPercent,
       sgstPercent,
       cgstAmount,
@@ -2517,13 +2524,18 @@ export class MongoStorage implements IStorage {
       (purchase as any).totalAmount = total;
       (purchase as any).sellingTotal = 0;
       const gstEnabled = (purchase as any).gstEnabled ?? false;
+      const gstType: string = (purchase as any).gstType ?? (gstEnabled ? "external" : "none");
       const cgstPercent = (purchase as any).cgstPercent ?? 0;
       const sgstPercent = (purchase as any).sgstPercent ?? 0;
-      const cgstAmount = gstEnabled ? (total * cgstPercent) / 100 : 0;
-      const sgstAmount = gstEnabled ? (total * sgstPercent) / 100 : 0;
+      const baseAmount = gstType === "internal" && (cgstPercent + sgstPercent) > 0
+        ? total / (1 + (cgstPercent + sgstPercent) / 100)
+        : total;
+      const cgstAmount = gstEnabled ? (baseAmount * cgstPercent) / 100 : 0;
+      const sgstAmount = gstEnabled ? (baseAmount * sgstPercent) / 100 : 0;
       (purchase as any).cgstAmount = cgstAmount;
       (purchase as any).sgstAmount = sgstAmount;
-      (purchase as any).grandTotal = total + cgstAmount + sgstAmount;
+      (purchase as any).gstType = gstType;
+      (purchase as any).grandTotal = gstType === "external" ? total + cgstAmount + sgstAmount : total;
     }
     const p = await VendorPurchaseModel.findByIdAndUpdate(id, purchase, { new: true });
     if (!p) return undefined;

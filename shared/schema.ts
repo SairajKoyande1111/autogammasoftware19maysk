@@ -443,6 +443,13 @@ export const vendorPurchaseSchema = z.object({
   paymentStatus: z.enum(["paid", "partially_paid", "unpaid"]).default("unpaid"),
   payments: z.array(paymentRecordSchema).default([]),
   notes: z.string().optional().default(""),
+  gstEnabled: z.boolean().optional().default(false),
+  gstType: z.enum(["none", "external", "internal"]).optional().default("none"),
+  cgstPercent: z.coerce.number().optional().default(0),
+  sgstPercent: z.coerce.number().optional().default(0),
+  cgstAmount: z.coerce.number().optional().default(0),
+  sgstAmount: z.coerce.number().optional().default(0),
+  grandTotal: z.coerce.number().optional().default(0),
   createdAt: z.string().default(() => new Date().toISOString()),
 });
 

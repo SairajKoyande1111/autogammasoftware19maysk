@@ -631,7 +631,9 @@ function PurchaseForm({ vendorId, vendorName, purchase, onClose }: PurchaseFormP
   const updatePaymentRecord = (i: number, field: string, val: string | number) =>
     setPaymentRecords(prev => prev.map((r, idx) => idx === i ? { ...r, [field]: val } : r));
 
-  const [gstEnabled, setGstEnabled] = useState<boolean>((purchase as any)?.gstEnabled ?? false);
+  const existingGstType: "none" | "external" | "internal" =
+    (purchase as any)?.gstType ?? ((purchase as any)?.gstEnabled ? "external" : "none");
+  const [gstType, setGstType] = useState<"none" | "external" | "internal">(existingGstType);
   const existingGst = ((purchase as any)?.cgstPercent || 0) + ((purchase as any)?.sgstPercent || 0);
   const [gstPercent, setGstPercent] = useState<string>(existingGst > 0 ? existingGst.toString() : "");
 
@@ -663,10 +665,14 @@ function PurchaseForm({ vendorId, vendorName, purchase, onClose }: PurchaseFormP
 
   const total = items.reduce((sum, i) => sum + getItemCost(i), 0);
   const paidTotal = paymentRecords.reduce((sum, r) => sum + (Number(r.amount) || 0), 0);
+  const gstEnabled = gstType !== "none";
   const gstRate = gstEnabled && gstPercent ? parseFloat(gstPercent) : 0;
-  const cgstAmt = gstRate > 0 ? (total * (gstRate / 2)) / 100 : 0;
-  const sgstAmt = gstRate > 0 ? (total * (gstRate / 2)) / 100 : 0;
-  const grandTotal = total + cgstAmt + sgstAmt;
+  // Internal: GST is included in the price — back-calculate base amount
+  // External: GST is added on top of the purchase cost
+  const baseAmount = gstType === "internal" && gstRate > 0 ? total / (1 + gstRate / 100) : total;
+  const cgstAmt = gstRate > 0 ? (baseAmount * (gstRate / 2)) / 100 : 0;
+  const sgstAmt = gstRate > 0 ? (baseAmount * (gstRate / 2)) / 100 : 0;
+  const grandTotal = gstType === "external" ? total + cgstAmt + sgstAmt : total;
 
   const invalidateMasters = () => {
     queryClient.invalidateQueries({ queryKey: ["/api/masters/ppf"] });
@@ -730,6 +736,7 @@ function PurchaseForm({ vendorId, vendorName, purchase, onClose }: PurchaseFormP
       notes,
       totalAmount: total,
       gstEnabled,
+      gstType,
       cgstPercent: gstRate / 2,
       sgstPercent: gstRate / 2,
       cgstAmount: cgstAmt,
@@ -827,33 +834,52 @@ function PurchaseForm({ vendorId, vendorName, purchase, onClose }: PurchaseFormP
 
         {/* GST Section */}
         <div className="mt-4 pt-4 border-t border-border/60 space-y-3">
-          <label className="flex items-center gap-2 cursor-pointer select-none">
-            <Checkbox
-              data-testid="checkbox-gst-enabled"
-              checked={gstEnabled}
-              onCheckedChange={(v) => setGstEnabled(!!v)}
-            />
-            <span className="text-sm font-semibold text-foreground">Apply GST (external — added on top of purchase cost)</span>
-          </label>
+          <div className="flex items-center justify-between">
+            <span className="text-sm font-semibold text-foreground">GST</span>
+            <div className="flex rounded-lg border border-border/60 overflow-hidden text-xs font-semibold">
+              {(["none", "external", "internal"] as const).map((opt) => (
+                <button
+                  key={opt}
+                  type="button"
+                  data-testid={`button-gst-${opt}`}
+                  onClick={() => setGstType(opt)}
+                  className={`px-3 py-1.5 transition-colors border-r last:border-r-0 border-border/60 ${
+                    gstType === opt
+                      ? "bg-primary text-primary-foreground"
+                      : "bg-background text-muted-foreground hover:bg-muted"
+                  }`}
+                >
+                  {opt === "none" ? "None" : opt === "external" ? "External" : "Internal"}
+                </button>
+              ))}
+            </div>
+          </div>
 
-          {gstEnabled && (
-            <div className="space-y-3 pl-6">
-              <div className="max-w-[200px] space-y-1.5">
-                <label className="text-xs font-medium text-muted-foreground">GST %</label>
-                <Input
-                  data-testid="input-gst-percent"
-                  className="h-9 text-sm"
-                  type="number" min={0} max={100} step={0.01}
-                  placeholder="e.g. 18"
-                  value={gstPercent}
-                  onChange={e => setGstPercent(e.target.value)}
-                />
+          {gstType !== "none" && (
+            <div className="space-y-2.5">
+              <p className="text-xs text-muted-foreground">
+                {gstType === "external"
+                  ? "GST is added on top of the purchase cost"
+                  : "GST is already included in the purchase cost"}
+              </p>
+              <div className="flex items-center gap-3">
+                <div className="w-[140px] space-y-1">
+                  <label className="text-xs font-medium text-muted-foreground">GST %</label>
+                  <Input
+                    data-testid="input-gst-percent"
+                    className="h-9 text-sm"
+                    type="number" min={0} max={100} step={0.01}
+                    placeholder="e.g. 18"
+                    value={gstPercent}
+                    onChange={e => setGstPercent(e.target.value)}
+                  />
+                </div>
               </div>
               {gstRate > 0 && (
                 <div className="rounded-lg border border-border/60 bg-muted/20 px-4 py-3 space-y-1.5 text-sm">
                   <div className="flex justify-between text-muted-foreground">
-                    <span>Base Amount</span>
-                    <span>{formatCurrency(total)}</span>
+                    <span>Base (excl. GST)</span>
+                    <span>{formatCurrency(baseAmount)}</span>
                   </div>
                   <div className="flex justify-between text-muted-foreground">
                     <span>CGST ({gstRate / 2}%)</span>
@@ -864,7 +890,7 @@ function PurchaseForm({ vendorId, vendorName, purchase, onClose }: PurchaseFormP
                     <span>{formatCurrency(sgstAmt)}</span>
                   </div>
                   <div className="flex justify-between font-bold text-foreground border-t border-border/60 pt-1.5 mt-1">
-                    <span>Grand Total (incl. GST)</span>
+                    <span>Grand Total</span>
                     <span>{formatCurrency(grandTotal)}</span>
                   </div>
                 </div>
@@ -1558,13 +1584,21 @@ function VendorDetailView({ vendor, purchases, onBack, onEdit, onDelete, onAddPu
               {/* GST Breakdown */}
               {(viewingPurchase as any).gstEnabled && (
                 <div className="rounded-xl border border-border/60 overflow-hidden">
-                  <div className="bg-muted/40 border-b border-border/40 px-4 py-2">
+                  <div className="bg-muted/40 border-b border-border/40 px-4 py-2 flex items-center justify-between">
                     <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">GST Breakdown</p>
+                    <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-primary/10 text-primary uppercase tracking-wide">
+                      {(viewingPurchase as any).gstType === "internal" ? "Internal" : "External"}
+                    </span>
                   </div>
                   <div className="px-4 py-3 space-y-2 text-sm">
                     <div className="flex justify-between text-muted-foreground">
-                      <span>Base Amount</span>
-                      <span className="font-medium text-foreground">{formatCurrency(getPurchaseCost(viewingPurchase))}</span>
+                      <span>Base (excl. GST)</span>
+                      <span className="font-medium text-foreground">
+                        {(viewingPurchase as any).gstType === "internal"
+                          ? formatCurrency(getPurchaseCost(viewingPurchase) / (1 + ((viewingPurchase as any).cgstPercent + (viewingPurchase as any).sgstPercent) / 100))
+                          : formatCurrency(getPurchaseCost(viewingPurchase))
+                        }
+                      </span>
                     </div>
                     {(viewingPurchase as any).cgstPercent > 0 && (
                       <div className="flex justify-between text-muted-foreground">
@@ -1579,7 +1613,7 @@ function VendorDetailView({ vendor, purchases, onBack, onEdit, onDelete, onAddPu
                       </div>
                     )}
                     <div className="flex justify-between font-bold text-foreground border-t border-border/60 pt-2 mt-1 text-base">
-                      <span>Grand Total (incl. GST)</span>
+                      <span>Grand Total</span>
                       <span>{formatCurrency((viewingPurchase as any).grandTotal || getPurchaseCost(viewingPurchase))}</span>
                     </div>
                   </div>

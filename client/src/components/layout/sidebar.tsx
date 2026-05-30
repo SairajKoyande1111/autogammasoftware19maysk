@@ -16,6 +16,7 @@ import {
   Wallet,
   BarChart2,
   Shield,
+  ShoppingCart,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/use-auth";
@@ -37,6 +38,7 @@ const navItems = [
   { icon: Wallet, label: "Expenses", href: "/expenses" },
   { icon: BarChart2, label: "Analytics", href: "/analytics" },
   { icon: Shield, label: "Warranty", href: "/warranty" },
+  { icon: ShoppingCart, label: "Resell", href: "/resell" },
   { icon: Settings, label: "Settings", href: "/settings" },
 ];
 

@@ -1,6 +1,6 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
-import { storage } from "./storage";
+import { storage, PPFMasterModel, AccessoryMasterModel } from "./storage";
 import { api } from "@shared/routes";
 import { z } from "zod";
 import session from "express-session";
@@ -1066,6 +1066,75 @@ app.use((req, res, next) => {
       res.json({ message: `Migration complete. ${updated} invoices updated.` });
     } catch (e: any) {
       res.status(500).json({ message: e.message || "Migration failed" });
+    }
+  });
+
+  // ── Resell Orders ────────────────────────────────────────────────────────────
+  app.get("/api/resell", async (req, res) => {
+    try {
+      const orders = await storage.getResellOrders();
+      res.json(orders);
+    } catch (e: any) {
+      res.status(500).json({ message: e.message });
+    }
+  });
+
+  app.post("/api/resell", async (req, res) => {
+    try {
+      const body = req.body;
+
+      if (!body.buyerName?.trim()) return res.status(400).json({ message: "Buyer name is required" });
+      if (!body.date) return res.status(400).json({ message: "Date is required" });
+      if (!body.itemType) return res.status(400).json({ message: "Item type is required" });
+      if ((body.unitPrice ?? 0) < 0) return res.status(400).json({ message: "Unit price must be 0 or more" });
+
+      if (body.itemType === "Accessory") {
+        if (!body.accessoryId) return res.status(400).json({ message: "Please select an accessory" });
+        const qty = Number(body.quantity);
+        if (!qty || qty <= 0) return res.status(400).json({ message: "Quantity must be greater than 0" });
+
+        const acc = await AccessoryMasterModel.findById(body.accessoryId);
+        if (!acc) return res.status(404).json({ message: "Accessory not found" });
+        if (acc.quantity < qty) {
+          return res.status(400).json({ message: `Insufficient stock. Available: ${acc.quantity} pcs` });
+        }
+        acc.quantity -= qty;
+        await acc.save();
+
+      } else if (body.itemType === "PPF") {
+        if (!body.ppfBrandId) return res.status(400).json({ message: "Please select a PPF brand" });
+        if (!body.ppfRollId) return res.status(400).json({ message: "Please select a PPF roll" });
+        const sqft = Number(body.sqft);
+        if (!sqft || sqft <= 0) return res.status(400).json({ message: "Sqft must be greater than 0" });
+
+        const ppf = await PPFMasterModel.findById(body.ppfBrandId);
+        if (!ppf) return res.status(404).json({ message: "PPF brand not found" });
+        const roll = (ppf.rolls as any[]).find((r: any) => r._id.toString() === body.ppfRollId);
+        if (!roll) return res.status(404).json({ message: "PPF roll not found" });
+        if (roll.stock < sqft) {
+          return res.status(400).json({ message: `Insufficient stock. Available: ${roll.stock} sqft` });
+        }
+        roll.stock -= sqft;
+        ppf.markModified("rolls");
+        await ppf.save();
+      } else {
+        return res.status(400).json({ message: "Invalid item type" });
+      }
+
+      const order = await storage.createResellOrder(body);
+      res.status(201).json(order);
+    } catch (e: any) {
+      res.status(500).json({ message: e.message });
+    }
+  });
+
+  app.delete("/api/resell/:id", async (req, res) => {
+    try {
+      const ok = await storage.deleteResellOrder(req.params.id);
+      if (!ok) return res.status(404).json({ message: "Resell order not found" });
+      res.json({ message: "Deleted" });
+    } catch (e: any) {
+      res.status(500).json({ message: e.message });
     }
   });
 

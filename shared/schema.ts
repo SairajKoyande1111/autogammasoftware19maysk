@@ -533,3 +533,33 @@ export const warrantyFollowUpSchema = z.object({
 export type WarrantyFollowUp = z.infer<typeof warrantyFollowUpSchema>;
 export const insertWarrantyFollowUpSchema = warrantyFollowUpSchema.omit({ id: true, createdAt: true });
 export type InsertWarrantyFollowUp = z.infer<typeof insertWarrantyFollowUpSchema>;
+
+// Resell Order Schemas
+export const resellOrderSchema = z.object({
+  id: z.string().optional(),
+  date: z.string().min(1, "Date is required"),
+  buyerName: z.string().min(1, "Buyer name is required"),
+  buyerPhone: z.string().optional().default(""),
+  itemType: z.enum(["Accessory", "PPF"]),
+  // Accessory fields
+  accessoryId: z.string().optional().default(""),
+  accessoryName: z.string().optional().default(""),
+  accessoryCategory: z.string().optional().default(""),
+  quantity: z.coerce.number().optional().default(0),
+  // PPF fields
+  ppfBrandId: z.string().optional().default(""),
+  ppfBrandName: z.string().optional().default(""),
+  ppfRollId: z.string().optional().default(""),
+  ppfRollName: z.string().optional().default(""),
+  sqft: z.coerce.number().optional().default(0),
+  // Pricing
+  unitPrice: z.coerce.number().min(0),
+  totalAmount: z.coerce.number().min(0),
+  paymentMode: z.string().default("Cash"),
+  notes: z.string().optional().default(""),
+  createdAt: z.string().default(() => new Date().toISOString()),
+});
+
+export type ResellOrder = z.infer<typeof resellOrderSchema>;
+export const insertResellOrderSchema = resellOrderSchema.omit({ id: true, createdAt: true });
+export type InsertResellOrder = z.infer<typeof insertResellOrderSchema>;

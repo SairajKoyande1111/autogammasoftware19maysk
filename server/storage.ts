@@ -34,6 +34,8 @@ import {
   InsertTechnicianAbsence,
   TechnicianIncrement,
   InsertTechnicianIncrement,
+  ResellOrder,
+  InsertResellOrder,
 } from "@shared/schema";
 import session from "express-session";
 // @ts-ignore
@@ -107,6 +109,29 @@ const accessoryMasterSchema = new mongoose.Schema({
 });
 
 export const AccessoryMasterModel = mongoose.model("AccessoryMaster", accessoryMasterSchema);
+
+const resellOrderMongoSchema = new mongoose.Schema({
+  date: { type: String, required: true },
+  buyerName: { type: String, required: true },
+  buyerPhone: { type: String, default: "" },
+  itemType: { type: String, required: true },
+  accessoryId: { type: String, default: "" },
+  accessoryName: { type: String, default: "" },
+  accessoryCategory: { type: String, default: "" },
+  quantity: { type: Number, default: 0 },
+  ppfBrandId: { type: String, default: "" },
+  ppfBrandName: { type: String, default: "" },
+  ppfRollId: { type: String, default: "" },
+  ppfRollName: { type: String, default: "" },
+  sqft: { type: Number, default: 0 },
+  unitPrice: { type: Number, required: true },
+  totalAmount: { type: Number, required: true },
+  paymentMode: { type: String, default: "Cash" },
+  notes: { type: String, default: "" },
+  createdAt: { type: String, default: () => new Date().toISOString() },
+});
+
+export const ResellOrderModel = mongoose.model("ResellOrder", resellOrderMongoSchema);
 
 const expenseMongoSchema = new mongoose.Schema({
   name: { type: String, required: true },
@@ -506,6 +531,11 @@ export interface IStorage {
   createVendorPurchase(purchase: InsertVendorPurchase): Promise<VendorPurchase>;
   updateVendorPurchase(id: string, purchase: Partial<InsertVendorPurchase>): Promise<VendorPurchase | undefined>;
   deleteVendorPurchase(id: string): Promise<boolean>;
+
+  // Resell Orders
+  getResellOrders(): Promise<ResellOrder[]>;
+  createResellOrder(order: InsertResellOrder): Promise<ResellOrder>;
+  deleteResellOrder(id: string): Promise<boolean>;
 
   // Warranty
   getWarrantyItems(): Promise<any[]>;
@@ -2731,6 +2761,23 @@ export class MongoStorage implements IStorage {
 
   async deleteWarrantyFollowUp(id: string): Promise<boolean> {
     const result = await WarrantyFollowUpModel.findByIdAndDelete(id);
+    return !!result;
+  }
+
+  // ── Resell Orders ────────────────────────────────────────────────────────────
+  async getResellOrders(): Promise<ResellOrder[]> {
+    const docs = await ResellOrderModel.find().sort({ createdAt: -1 });
+    return docs.map(d => ({ ...d.toObject(), id: d._id.toString() }) as ResellOrder);
+  }
+
+  async createResellOrder(order: InsertResellOrder): Promise<ResellOrder> {
+    const doc = new ResellOrderModel({ ...order, createdAt: new Date().toISOString() });
+    await doc.save();
+    return { ...doc.toObject(), id: doc._id.toString() } as ResellOrder;
+  }
+
+  async deleteResellOrder(id: string): Promise<boolean> {
+    const result = await ResellOrderModel.findByIdAndDelete(id);
     return !!result;
   }
 }

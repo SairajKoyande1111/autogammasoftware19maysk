@@ -5,9 +5,10 @@ import { Label } from "@/components/ui/label";
 import {
   Plus, Search, Wrench, Phone as PhoneIcon, Edit2, Trash2,
   ChevronLeft, ChevronRight, IndianRupee, CalendarX, TrendingUp,
-  ArrowLeft, CheckCircle2, Clock, AlertCircle, ArrowUpRight, X
+  ArrowLeft, CheckCircle2, Clock, AlertCircle, ArrowUpRight, X,
+  Users, ChevronDown, ChevronUp
 } from "lucide-react";
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { api } from "@shared/routes";
 import { Technician, TechnicianSalaryRecord, TechnicianAbsence, TechnicianIncrement } from "@shared/schema";
@@ -15,11 +16,13 @@ import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Card, CardContent } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
+import { Badge } from "@/components/ui/badge";
 
 const MONTHS = ["January","February","March","April","May","June","July","August","September","October","November","December"];
 const MONTHS_SHORT = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+const PAGE_SIZE = 10;
+const HISTORY_PAGE_SIZE = 8;
 
 function formatCurrency(n: number) {
   return "₹" + n.toLocaleString("en-IN", { maximumFractionDigits: 0 });
@@ -27,8 +30,46 @@ function formatCurrency(n: number) {
 
 function StatusBadge({ status }: { status: "paid"|"partial"|"unpaid" }) {
   if (status === "paid") return <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-700"><CheckCircle2 className="h-3 w-3"/>Paid</span>;
-  if (status === "partial") return <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-amber-100 text-amber-700"><Clock className="h-3 w-3"/>Partially Paid</span>;
+  if (status === "partial") return <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-amber-100 text-amber-700"><Clock className="h-3 w-3"/>Partial</span>;
   return <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-red-100 text-red-700"><AlertCircle className="h-3 w-3"/>Unpaid</span>;
+}
+
+function Pagination({ page, total, pageSize, onChange }: { page: number; total: number; pageSize: number; onChange: (p: number) => void }) {
+  const totalPages = Math.ceil(total / pageSize);
+  if (totalPages <= 1) return null;
+  return (
+    <div className="flex items-center justify-between px-4 py-3 border-t border-border/40 bg-muted/20">
+      <p className="text-xs text-muted-foreground">
+        Showing {(page - 1) * pageSize + 1}–{Math.min(page * pageSize, total)} of {total}
+      </p>
+      <div className="flex items-center gap-1">
+        <Button variant="outline" size="sm" className="h-7 w-7 p-0" disabled={page === 1} onClick={() => onChange(page - 1)}>
+          <ChevronLeft className="h-3.5 w-3.5" />
+        </Button>
+        {Array.from({ length: totalPages }, (_, i) => i + 1)
+          .filter(p => p === 1 || p === totalPages || Math.abs(p - page) <= 1)
+          .reduce<(number | "...")[]>((acc, p, idx, arr) => {
+            if (idx > 0 && p - (arr[idx - 1] as number) > 1) acc.push("...");
+            acc.push(p);
+            return acc;
+          }, [])
+          .map((p, i) =>
+            p === "..." ? (
+              <span key={`e${i}`} className="text-xs text-muted-foreground px-1">…</span>
+            ) : (
+              <Button key={p} variant={page === p ? "default" : "outline"} size="sm"
+                className={`h-7 w-7 p-0 text-xs ${page === p ? "bg-primary text-white" : ""}`}
+                onClick={() => onChange(p as number)}>
+                {p}
+              </Button>
+            )
+          )}
+        <Button variant="outline" size="sm" className="h-7 w-7 p-0" disabled={page === totalPages} onClick={() => onChange(page + 1)}>
+          <ChevronRight className="h-3.5 w-3.5" />
+        </Button>
+      </div>
+    </div>
+  );
 }
 
 // ─── ROOT PAGE ────────────────────────────────────────────────────────────────
@@ -37,11 +78,13 @@ export default function TechniciansPage() {
   const [isAddOpen, setIsAddOpen] = useState(false);
   const [editingTechnician, setEditingTechnician] = useState<Technician | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
-  const [sortBy, setSortBy] = useState("name");
+  const [sortBy, setSortBy] = useState<"name"|"specialty"|"salary">("name");
+  const [sortDir, setSortDir] = useState<"asc"|"desc">("asc");
   const [statusFilter, setStatusFilter] = useState("all");
+  const [page, setPage] = useState(1);
   const { toast } = useToast();
 
-  const { data: technicians = [] } = useQuery<Technician[]>({ queryKey: [api.technicians.list.path] });
+  const { data: technicians = [], isLoading } = useQuery<Technician[]>({ queryKey: [api.technicians.list.path] });
 
   const deleteMutation = useMutation({
     mutationFn: (id: string) => apiRequest("DELETE", `/api/technicians/${id}`),
@@ -51,16 +94,44 @@ export default function TechniciansPage() {
     },
   });
 
-  // When editing updates salary, update selectedTechnician ref too
   const handleEditClose = () => {
     setEditingTechnician(null);
-    // Refresh technician list so updated salary shows in detail view
     queryClient.invalidateQueries({ queryKey: [api.technicians.list.path] });
   };
 
-  // If a technician is selected, show their full detail page
+  const handleSort = (col: "name"|"specialty"|"salary") => {
+    if (sortBy === col) setSortDir(d => d === "asc" ? "desc" : "asc");
+    else { setSortBy(col); setSortDir("asc"); }
+    setPage(1);
+  };
+
+  const filtered = useMemo(() => {
+    const q = searchQuery.toLowerCase();
+    return technicians
+      .filter(t =>
+        (t.name.toLowerCase().includes(q) || t.specialty.toLowerCase().includes(q) || (t.phone ?? "").includes(q))
+        && (statusFilter === "all" || t.status === statusFilter)
+      )
+      .sort((a, b) => {
+        let v = 0;
+        if (sortBy === "specialty") v = a.specialty.localeCompare(b.specialty);
+        else if (sortBy === "salary") v = (a.monthlySalary ?? 0) - (b.monthlySalary ?? 0);
+        else v = a.name.localeCompare(b.name);
+        return sortDir === "asc" ? v : -v;
+      });
+  }, [technicians, searchQuery, statusFilter, sortBy, sortDir]);
+
+  const paginated = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+  const activeCount = technicians.filter(t => t.status === "active").length;
+
+  const SortIcon = ({ col }: { col: string }) => {
+    if (sortBy !== col) return <ChevronDown className="h-3 w-3 text-muted-foreground/40 ml-1" />;
+    return sortDir === "asc"
+      ? <ChevronUp className="h-3 w-3 text-primary ml-1" />
+      : <ChevronDown className="h-3 w-3 text-primary ml-1" />;
+  };
+
   if (selectedTechnician) {
-    // Get the latest version from fetched data
     const latest = technicians.find(t => t.id === selectedTechnician.id) ?? selectedTechnician;
     return (
       <Layout>
@@ -79,21 +150,16 @@ export default function TechniciansPage() {
     );
   }
 
-  const filtered = technicians
-    .filter(t => {
-      const q = searchQuery.toLowerCase();
-      return (t.name.toLowerCase().includes(q) || t.specialty.toLowerCase().includes(q))
-        && (statusFilter === "all" || t.status === statusFilter);
-    })
-    .sort((a, b) => sortBy === "specialty" ? a.specialty.localeCompare(b.specialty) : a.name.localeCompare(b.name));
-
   return (
     <Layout>
-      <div className="p-6 space-y-6">
+      <div className="p-6 space-y-5">
+        {/* Header */}
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-3xl font-display font-bold tracking-tight text-foreground">Technicians</h1>
-            <p className="text-sm text-muted-foreground mt-1">Click on a technician to view salary, absences and increment history</p>
+            <p className="text-sm text-muted-foreground mt-1">
+              {technicians.length} total · {activeCount} active
+            </p>
           </div>
           <Button data-testid="button-add-technician" onClick={() => setIsAddOpen(true)} className="bg-primary hover:bg-primary/90">
             <Plus className="h-4 w-4 mr-2" />Add Technician
@@ -102,79 +168,136 @@ export default function TechniciansPage() {
 
         {/* Search + Filters */}
         <div className="flex gap-3 items-center flex-wrap">
-          <div className="relative flex-1 min-w-[200px] max-w-sm">
+          <div className="relative flex-1 min-w-[220px] max-w-md">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground h-4 w-4" />
-            <Input data-testid="input-search" placeholder="Search by name or specialty..." value={searchQuery}
-              onChange={e => setSearchQuery(e.target.value)} className="pl-10" />
+            <Input data-testid="input-search"
+              placeholder="Search by name, specialty or phone..."
+              value={searchQuery}
+              onChange={e => { setSearchQuery(e.target.value); setPage(1); }}
+              className="pl-10" />
           </div>
-          <Select value={sortBy} onValueChange={setSortBy}>
-            <SelectTrigger className="w-[160px]"><SelectValue /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="name">Sort by Name</SelectItem>
-              <SelectItem value="specialty">Sort by Specialty</SelectItem>
-            </SelectContent>
-          </Select>
-          <Select value={statusFilter} onValueChange={setStatusFilter}>
-            <SelectTrigger className="w-[130px]"><SelectValue /></SelectTrigger>
+          <Select value={statusFilter} onValueChange={v => { setStatusFilter(v); setPage(1); }}>
+            <SelectTrigger className="w-[140px]"><SelectValue /></SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All Status</SelectItem>
               <SelectItem value="active">Active</SelectItem>
               <SelectItem value="inactive">Inactive</SelectItem>
             </SelectContent>
           </Select>
+          {searchQuery && (
+            <Button variant="ghost" size="sm" className="text-muted-foreground h-9"
+              onClick={() => { setSearchQuery(""); setPage(1); }}>
+              <X className="h-3.5 w-3.5 mr-1" />Clear
+            </Button>
+          )}
         </div>
 
-        {/* Card Grid */}
-        {filtered.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-24 text-muted-foreground">
-            <Wrench className="h-12 w-12 mb-4 opacity-30" />
-            <p className="text-lg font-medium">No technicians found</p>
+        {/* Table */}
+        <div className="rounded-xl border border-border/60 overflow-hidden bg-background shadow-sm">
+          {/* Table Header */}
+          <div className="grid grid-cols-12 gap-2 px-5 py-3 bg-muted/30 border-b border-border/40 text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+            <button className="col-span-3 flex items-center text-left hover:text-foreground transition-colors"
+              onClick={() => handleSort("name")}>
+              Name <SortIcon col="name" />
+            </button>
+            <button className="col-span-3 flex items-center text-left hover:text-foreground transition-colors"
+              onClick={() => handleSort("specialty")}>
+              Specialty <SortIcon col="specialty" />
+            </button>
+            <span className="col-span-2">Phone</span>
+            <span className="col-span-2">Joined</span>
+            <button className="col-span-1 flex items-center text-left hover:text-foreground transition-colors"
+              onClick={() => handleSort("salary")}>
+              Salary <SortIcon col="salary" />
+            </button>
+            <span className="col-span-1 text-right">Actions</span>
           </div>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {filtered.map(tech => (
-              <Card key={tech.id} data-testid={`card-technician-${tech.id}`}
-                className="cursor-pointer hover:shadow-md hover:border-primary/40 transition-all group"
-                onClick={() => setSelectedTechnician(tech)}>
-                <CardContent className="pt-5 pb-4">
-                  <div className="flex items-start justify-between">
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-1.5">
-                        <h3 className="font-semibold text-base text-foreground">{tech.name}</h3>
-                        <ChevronRight className="h-4 w-4 text-primary opacity-0 group-hover:opacity-100 transition-opacity" />
-                      </div>
-                      <p className="text-sm text-muted-foreground">{tech.specialty}</p>
-                      {tech.phone && (
-                        <div className="flex items-center gap-1 mt-1 text-xs text-muted-foreground">
-                          <PhoneIcon className="h-3 w-3" />{tech.phone}
-                        </div>
-                      )}
-                      <div className="flex items-center gap-2 mt-2 flex-wrap">
-                        <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
-                          tech.status === "active" ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-600"
-                        }`}>{tech.status === "active" ? "Active" : "Inactive"}</span>
-                        {(tech.monthlySalary ?? 0) > 0 && (
-                          <span className="text-xs text-muted-foreground">{formatCurrency(tech.monthlySalary ?? 0)}/mo</span>
-                        )}
-                      </div>
-                    </div>
-                    <div className="flex gap-0.5" onClick={e => e.stopPropagation()}>
-                      <Button data-testid={`button-edit-${tech.id}`} variant="ghost" size="icon" className="h-8 w-8"
-                        onClick={() => setEditingTechnician(tech)}>
-                        <Edit2 className="h-3.5 w-3.5" />
-                      </Button>
-                      <Button data-testid={`button-delete-${tech.id}`} variant="ghost" size="icon" className="h-8 w-8"
-                        onClick={() => { if (confirm("Delete this technician?")) deleteMutation.mutate(tech.id!); }}>
-                        <Trash2 className="h-3.5 w-3.5 text-destructive" />
-                      </Button>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
-        )}
 
+          {/* Rows */}
+          {isLoading ? (
+            <div className="py-16 flex flex-col items-center justify-center gap-3 text-muted-foreground">
+              <div className="h-6 w-6 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+              <span className="text-sm">Loading technicians…</span>
+            </div>
+          ) : paginated.length === 0 ? (
+            <div className="py-20 flex flex-col items-center justify-center gap-3 text-muted-foreground">
+              <Wrench className="h-10 w-10 opacity-25" />
+              <p className="text-base font-medium">No technicians found</p>
+              {searchQuery && <p className="text-sm">Try a different search term</p>}
+            </div>
+          ) : (
+            paginated.map((tech, i) => (
+              <div key={tech.id}
+                data-testid={`row-technician-${tech.id}`}
+                className={`grid grid-cols-12 gap-2 px-5 py-3.5 items-center text-sm cursor-pointer
+                  hover:bg-muted/30 transition-colors group
+                  ${i < paginated.length - 1 ? "border-b border-border/40" : ""}`}
+                onClick={() => setSelectedTechnician(tech)}>
+
+                {/* Name + status */}
+                <div className="col-span-3 flex items-center gap-2.5 min-w-0">
+                  <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
+                    <span className="text-xs font-bold text-primary">{tech.name.charAt(0).toUpperCase()}</span>
+                  </div>
+                  <div className="min-w-0">
+                    <p className="font-semibold text-foreground truncate">{tech.name}</p>
+                    <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${
+                      tech.status === "active" ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-500"
+                    }`}>
+                      {tech.status === "active" ? "Active" : "Inactive"}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Specialty */}
+                <div className="col-span-3">
+                  <span className="text-muted-foreground truncate block">{tech.specialty}</span>
+                </div>
+
+                {/* Phone */}
+                <div className="col-span-2 flex items-center gap-1 text-muted-foreground">
+                  {tech.phone ? (
+                    <>
+                      <PhoneIcon className="h-3 w-3 flex-shrink-0" />
+                      <span className="text-xs">{tech.phone}</span>
+                    </>
+                  ) : (
+                    <span className="text-xs text-muted-foreground/40">—</span>
+                  )}
+                </div>
+
+                {/* Joined */}
+                <div className="col-span-2 text-xs text-muted-foreground">
+                  {tech.joiningDate || <span className="text-muted-foreground/40">—</span>}
+                </div>
+
+                {/* Salary */}
+                <div className="col-span-1 font-semibold text-foreground text-sm">
+                  {(tech.monthlySalary ?? 0) > 0
+                    ? <span className="text-xs">{formatCurrency(tech.monthlySalary ?? 0)}<span className="text-muted-foreground font-normal">/mo</span></span>
+                    : <span className="text-muted-foreground/40 text-xs">—</span>}
+                </div>
+
+                {/* Actions */}
+                <div className="col-span-1 flex justify-end gap-0.5" onClick={e => e.stopPropagation()}>
+                  <Button data-testid={`button-edit-${tech.id}`} variant="ghost" size="icon" className="h-7 w-7 opacity-0 group-hover:opacity-100 transition-opacity"
+                    onClick={() => setEditingTechnician(tech)}>
+                    <Edit2 className="h-3.5 w-3.5" />
+                  </Button>
+                  <Button data-testid={`button-delete-${tech.id}`} variant="ghost" size="icon" className="h-7 w-7 opacity-0 group-hover:opacity-100 transition-opacity"
+                    onClick={() => { if (confirm("Delete this technician?")) deleteMutation.mutate(tech.id!); }}>
+                    <Trash2 className="h-3.5 w-3.5 text-destructive" />
+                  </Button>
+                </div>
+              </div>
+            ))
+          )}
+
+          {/* Pagination */}
+          <Pagination page={page} total={filtered.length} pageSize={PAGE_SIZE} onChange={setPage} />
+        </div>
+
+        {/* Dialogs */}
         <Dialog open={isAddOpen} onOpenChange={setIsAddOpen}>
           <DialogContent className="max-w-md">
             <DialogHeader><DialogTitle>Add New Technician</DialogTitle></DialogHeader>
@@ -278,7 +401,7 @@ function TechnicianDetail({ technician, onBack, onEdit }: {
   technician: Technician; onBack: () => void; onEdit: () => void;
 }) {
   const now = new Date();
-  const [viewMonth, setViewMonth] = useState(now.getMonth() + 1); // 1-12
+  const [viewMonth, setViewMonth] = useState(now.getMonth() + 1);
   const [viewYear, setViewYear] = useState(now.getFullYear());
 
   const { data: salaryRecords = [] } = useQuery<TechnicianSalaryRecord[]>({
@@ -308,23 +431,36 @@ function TechnicianDetail({ technician, onBack, onEdit }: {
   });
 
   return (
-    <div className="p-6 space-y-6 max-w-4xl">
+    <div className="p-6 space-y-6">
       {/* Back + Header */}
       <div>
         <button onClick={onBack} className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors mb-4">
           <ArrowLeft className="h-4 w-4" />Back to Technicians
         </button>
         <div className="flex items-start justify-between">
-          <div>
-            <h1 className="text-2xl font-bold text-foreground">{technician.name}</h1>
-            <p className="text-muted-foreground text-sm mt-0.5">{technician.specialty}</p>
-            <div className="flex items-center gap-3 mt-2 flex-wrap">
-              <span className={`text-xs px-2.5 py-1 rounded-full font-medium ${
-                technician.status === "active" ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-600"
-              }`}>{technician.status === "active" ? "Active" : "Inactive"}</span>
-              {technician.phone && <span className="text-sm text-muted-foreground flex items-center gap-1"><PhoneIcon className="h-3.5 w-3.5" />{technician.phone}</span>}
-              {technician.joiningDate && <span className="text-sm text-muted-foreground">Joined: {technician.joiningDate}</span>}
-              <span className="text-sm font-semibold text-foreground flex items-center gap-1"><IndianRupee className="h-3.5 w-3.5" />{formatCurrency(technician.monthlySalary ?? 0)}/month</span>
+          <div className="flex items-start gap-4">
+            <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0 mt-0.5">
+              <span className="text-lg font-bold text-primary">{technician.name.charAt(0).toUpperCase()}</span>
+            </div>
+            <div>
+              <h1 className="text-2xl font-bold text-foreground">{technician.name}</h1>
+              <p className="text-muted-foreground text-sm mt-0.5">{technician.specialty}</p>
+              <div className="flex items-center gap-3 mt-2 flex-wrap">
+                <span className={`text-xs px-2.5 py-1 rounded-full font-medium ${
+                  technician.status === "active" ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-600"
+                }`}>{technician.status === "active" ? "Active" : "Inactive"}</span>
+                {technician.phone && (
+                  <span className="text-sm text-muted-foreground flex items-center gap-1">
+                    <PhoneIcon className="h-3.5 w-3.5" />{technician.phone}
+                  </span>
+                )}
+                {technician.joiningDate && (
+                  <span className="text-sm text-muted-foreground">Joined: {technician.joiningDate}</span>
+                )}
+                <span className="text-sm font-semibold text-foreground flex items-center gap-1">
+                  <IndianRupee className="h-3.5 w-3.5" />{formatCurrency(technician.monthlySalary ?? 0)}/month
+                </span>
+              </div>
             </div>
           </div>
           <Button variant="outline" size="sm" onClick={onEdit}>
@@ -333,7 +469,7 @@ function TechnicianDetail({ technician, onBack, onEdit }: {
         </div>
       </div>
 
-      {/* ── Month Navigator ─────────────────────────────────────────────────── */}
+      {/* Month Navigator */}
       <div className="flex items-center gap-4 border border-border/60 rounded-xl px-5 py-3 bg-muted/20">
         <button onClick={goToPrevMonth} className="p-1.5 rounded-lg hover:bg-muted transition-colors">
           <ChevronLeft className="h-5 w-5 text-muted-foreground" />
@@ -347,18 +483,16 @@ function TechnicianDetail({ technician, onBack, onEdit }: {
         </button>
       </div>
 
-      {/* ── Monthly Sections ────────────────────────────────────────────────── */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {/* Salary this month */}
+      {/* Monthly Salary + Absences side by side */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
         <MonthlySalaryCard technician={technician} record={monthRecord} month={viewMonth} year={viewYear} />
-        {/* Absences this month */}
         <MonthlyAbsencesCard technician={technician} absences={monthAbsences} month={viewMonth} year={viewYear} />
       </div>
 
-      {/* ── Salary History ──────────────────────────────────────────────────── */}
+      {/* Salary History */}
       <SalaryHistorySection technician={technician} records={salaryRecords} />
 
-      {/* ── Increment History ───────────────────────────────────────────────── */}
+      {/* Increment History */}
       <IncrementHistorySection technician={technician} increments={increments} />
     </div>
   );
@@ -441,7 +575,6 @@ function MonthlySalaryCard({ technician, record, month, year }: {
               </div>
             </div>
 
-            {/* Payment history */}
             {(record.payments || []).length > 0 && (
               <div className="rounded-lg bg-muted/30 border border-border/40 divide-y divide-border/30">
                 {record.payments.map((p, i) => (
@@ -599,54 +732,79 @@ function MonthlyAbsencesCard({ technician, absences, month, year }: {
 
 // ─── SALARY HISTORY ──────────────────────────────────────────────────────────
 function SalaryHistorySection({ technician, records }: { technician: Technician; records: TechnicianSalaryRecord[] }) {
-  const { toast } = useToast();
+  const [page, setPage] = useState(1);
+  const [search, setSearch] = useState("");
 
   const deleteMutation = useMutation({
     mutationFn: (id: string) => apiRequest("DELETE", `/api/technicians/${technician.id}/salary-records/${id}`),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: [`/api/technicians/${technician.id}/salary-records`] }),
   });
 
+  const sorted = [...records].sort((a, b) => b.year !== a.year ? b.year - a.year : b.month - a.month);
+  const filtered = search
+    ? sorted.filter(r => `${MONTHS[r.month - 1]} ${r.year}`.toLowerCase().includes(search.toLowerCase()))
+    : sorted;
+  const paginated = filtered.slice((page - 1) * HISTORY_PAGE_SIZE, page * HISTORY_PAGE_SIZE);
+
   return (
     <div className="space-y-3">
-      <div className="flex items-center gap-2">
-        <IndianRupee className="h-4 w-4 text-muted-foreground" />
-        <h2 className="text-sm font-bold text-foreground uppercase tracking-wide">Salary History — All Months</h2>
+      <div className="flex items-center justify-between gap-3 flex-wrap">
+        <div className="flex items-center gap-2">
+          <IndianRupee className="h-4 w-4 text-muted-foreground" />
+          <h2 className="text-sm font-bold text-foreground uppercase tracking-wide">Salary History — All Months</h2>
+          <span className="text-xs text-muted-foreground bg-muted px-2 py-0.5 rounded-full">{records.length} record{records.length !== 1 ? "s" : ""}</span>
+        </div>
+        {records.length > 0 && (
+          <div className="relative w-48">
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+            <Input className="h-8 pl-8 text-sm" placeholder="Filter by month…"
+              value={search} onChange={e => { setSearch(e.target.value); setPage(1); }} />
+          </div>
+        )}
       </div>
 
       {records.length === 0 ? (
         <div className="rounded-xl border border-border/60 px-4 py-8 text-center text-muted-foreground text-sm">
           No salary records yet. Navigate to a month and create the first record.
         </div>
+      ) : filtered.length === 0 ? (
+        <div className="rounded-xl border border-border/60 px-4 py-6 text-center text-muted-foreground text-sm">
+          No records match "{search}"
+        </div>
       ) : (
-        <div className="rounded-xl border border-border/60 overflow-hidden">
-          {/* Table header */}
-          <div className="grid grid-cols-5 gap-2 px-4 py-2 bg-muted/40 border-b border-border/40 text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">
-            <span className="col-span-2">Month</span>
-            <span>Salary Due</span>
-            <span>Paid</span>
-            <span>Status</span>
+        <div className="rounded-xl border border-border/60 overflow-hidden bg-background shadow-sm">
+          {/* Header */}
+          <div className="grid grid-cols-12 gap-2 px-5 py-2.5 bg-muted/30 border-b border-border/40 text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">
+            <span className="col-span-3">Month</span>
+            <span className="col-span-3">Last Payment</span>
+            <span className="col-span-2">Salary Due</span>
+            <span className="col-span-2">Paid</span>
+            <span className="col-span-2">Status</span>
           </div>
-          {records.map((r, i) => {
+
+          {paginated.map((r, i) => {
             const balance = Math.max(0, r.salaryDue - r.paidAmount);
             const lastPayment = (r.payments || []).slice(-1)[0];
             return (
-              <div key={r.id} className={`grid grid-cols-5 gap-2 px-4 py-3 items-center text-sm ${i < records.length - 1 ? "border-b border-border/40" : ""}`}>
+              <div key={r.id}
+                className={`grid grid-cols-12 gap-2 px-5 py-3.5 items-center text-sm group
+                  ${i < paginated.length - 1 ? "border-b border-border/40" : ""}`}>
+                <div className="col-span-3">
+                  <span className="font-semibold text-foreground">{MONTHS[r.month - 1]} {r.year}</span>
+                </div>
+                <div className="col-span-3 text-xs text-muted-foreground">
+                  {lastPayment
+                    ? <>{lastPayment.date} · {lastPayment.method}</>
+                    : <span className="text-muted-foreground/40">—</span>}
+                </div>
+                <div className="col-span-2 font-medium text-foreground">{formatCurrency(r.salaryDue)}</div>
                 <div className="col-span-2">
-                  <span className="font-medium text-foreground">{MONTHS[r.month - 1]} {r.year}</span>
-                  {lastPayment && (
-                    <p className="text-[10px] text-muted-foreground mt-0.5">
-                      Last paid: {lastPayment.date} · {lastPayment.method}
-                    </p>
-                  )}
-                </div>
-                <span className="text-foreground font-medium">{formatCurrency(r.salaryDue)}</span>
-                <div>
                   <span className="text-emerald-600 font-medium">{formatCurrency(r.paidAmount)}</span>
-                  {balance > 0 && <p className="text-[10px] text-red-500">-{formatCurrency(balance)} bal.</p>}
+                  {balance > 0 && <p className="text-[10px] text-red-500 mt-0.5">-{formatCurrency(balance)} bal.</p>}
                 </div>
-                <div className="flex items-center justify-between">
+                <div className="col-span-2 flex items-center justify-between">
                   <StatusBadge status={r.paymentStatus} />
-                  <Button variant="ghost" size="icon" className="h-6 w-6 ml-1"
+                  <Button variant="ghost" size="icon" className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity ml-1"
                     onClick={() => { if (confirm("Delete this record?")) deleteMutation.mutate(r.id!); }}>
                     <X className="h-3 w-3 text-muted-foreground" />
                   </Button>
@@ -654,6 +812,8 @@ function SalaryHistorySection({ technician, records }: { technician: Technician;
               </div>
             );
           })}
+
+          <Pagination page={page} total={filtered.length} pageSize={HISTORY_PAGE_SIZE} onChange={setPage} />
         </div>
       )}
     </div>
@@ -667,6 +827,7 @@ function IncrementHistorySection({ technician, increments }: { technician: Techn
   const [newSalary, setNewSalary] = useState("");
   const [effectiveDate, setEffectiveDate] = useState(new Date().toISOString().split("T")[0]);
   const [notes, setNotes] = useState("");
+  const [page, setPage] = useState(1);
 
   const createMutation = useMutation({
     mutationFn: (data: any) => apiRequest("POST", `/api/technicians/${technician.id}/increments`, data),
@@ -689,12 +850,16 @@ function IncrementHistorySection({ technician, increments }: { technician: Techn
     createMutation.mutate({ previousSalary: technician.monthlySalary ?? 0, newSalary: ns, effectiveDate, notes });
   };
 
+  const sorted = [...increments].sort((a, b) => new Date(b.effectiveDate).getTime() - new Date(a.effectiveDate).getTime());
+  const paginated = sorted.slice((page - 1) * HISTORY_PAGE_SIZE, page * HISTORY_PAGE_SIZE);
+
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <TrendingUp className="h-4 w-4 text-muted-foreground" />
           <h2 className="text-sm font-bold text-foreground uppercase tracking-wide">Salary Increment History</h2>
+          <span className="text-xs text-muted-foreground bg-muted px-2 py-0.5 rounded-full">{increments.length}</span>
         </div>
         <Button data-testid="button-add-increment" size="sm" variant="outline" onClick={() => setShowForm(v => !v)}>
           <Plus className="h-3.5 w-3.5 mr-1" />{showForm ? "Cancel" : "Record Increment"}
@@ -735,35 +900,49 @@ function IncrementHistorySection({ technician, increments }: { technician: Techn
           No increments recorded yet.
         </div>
       ) : (
-        <div className="rounded-xl border border-border/60 overflow-hidden">
-          {increments.map((inc, i) => {
+        <div className="rounded-xl border border-border/60 overflow-hidden bg-background shadow-sm">
+          {/* Header */}
+          <div className="grid grid-cols-12 gap-2 px-5 py-2.5 bg-muted/30 border-b border-border/40 text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">
+            <span className="col-span-1"></span>
+            <span className="col-span-3">Salary Change</span>
+            <span className="col-span-2">Increase</span>
+            <span className="col-span-3">Effective Date</span>
+            <span className="col-span-3">Notes</span>
+          </div>
+
+          {paginated.map((inc, i) => {
             const diff = inc.newSalary - inc.previousSalary;
             const pct = inc.previousSalary > 0 ? ((diff / inc.previousSalary) * 100).toFixed(1) : "—";
             return (
-              <div key={inc.id} className={`flex items-center justify-between px-4 py-3 text-sm ${i < increments.length - 1 ? "border-b border-border/40" : ""}`}>
-                <div className="flex items-center gap-3">
-                  <div className="w-8 h-8 rounded-full bg-emerald-50 border border-emerald-100 flex items-center justify-center flex-shrink-0">
-                    <ArrowUpRight className="h-4 w-4 text-emerald-600" />
-                  </div>
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <span className="text-muted-foreground">{formatCurrency(inc.previousSalary)}</span>
-                      <span className="text-muted-foreground">→</span>
-                      <span className="font-bold text-foreground">{formatCurrency(inc.newSalary)}</span>
-                      <span className="text-[10px] bg-emerald-100 text-emerald-700 px-1.5 py-0.5 rounded-full font-semibold">+{pct}%</span>
-                    </div>
-                    <p className="text-xs text-muted-foreground mt-0.5">
-                      Effective from {inc.effectiveDate}{inc.notes ? ` · ${inc.notes}` : ""}
-                    </p>
+              <div key={inc.id}
+                className={`grid grid-cols-12 gap-2 px-5 py-3.5 items-center text-sm group
+                  ${i < paginated.length - 1 ? "border-b border-border/40" : ""}`}>
+                <div className="col-span-1">
+                  <div className="w-7 h-7 rounded-full bg-emerald-50 border border-emerald-100 flex items-center justify-center">
+                    <ArrowUpRight className="h-3.5 w-3.5 text-emerald-600" />
                   </div>
                 </div>
-                <Button variant="ghost" size="icon" className="h-7 w-7"
-                  onClick={() => { if (confirm("Delete this increment record?")) deleteMutation.mutate(inc.id!); }}>
-                  <X className="h-3.5 w-3.5 text-muted-foreground" />
-                </Button>
+                <div className="col-span-3 flex items-center gap-1.5 flex-wrap">
+                  <span className="text-muted-foreground text-xs">{formatCurrency(inc.previousSalary)}</span>
+                  <span className="text-muted-foreground text-xs">→</span>
+                  <span className="font-bold text-foreground text-xs">{formatCurrency(inc.newSalary)}</span>
+                </div>
+                <div className="col-span-2">
+                  <span className="text-xs bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full font-semibold">+{pct}%</span>
+                </div>
+                <div className="col-span-3 text-xs text-muted-foreground">{inc.effectiveDate}</div>
+                <div className="col-span-3 flex items-center justify-between gap-2">
+                  <span className="text-xs text-muted-foreground truncate">{inc.notes || <span className="text-muted-foreground/40">—</span>}</span>
+                  <Button variant="ghost" size="icon" className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0"
+                    onClick={() => { if (confirm("Delete this increment record?")) deleteMutation.mutate(inc.id!); }}>
+                    <X className="h-3.5 w-3.5 text-muted-foreground" />
+                  </Button>
+                </div>
               </div>
             );
           })}
+
+          <Pagination page={page} total={sorted.length} pageSize={HISTORY_PAGE_SIZE} onChange={setPage} />
         </div>
       )}
     </div>
